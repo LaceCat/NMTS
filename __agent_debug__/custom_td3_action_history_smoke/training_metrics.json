@@ -1,0 +1,17 @@
+[
+  {
+    "episode": 1,
+    "reward": 1716.3330482083265,
+    "final_mass": 744.8519266037122,
+    "energy": 737.0377567907706,
+    "safety_violations": 0,
+    "safe_episode": true,
+    "reward_breakdown": {
+      "production": 7.099385385184746,
+      "energy": -0.9628487354131677,
+      "safety": 0.0,
+      "terminal": -149.70385320742434,
+      "total": -143.56731655765276
+    }
+  }
+]

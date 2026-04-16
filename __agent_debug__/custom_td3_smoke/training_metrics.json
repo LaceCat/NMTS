@@ -1,0 +1,32 @@
+[
+  {
+    "episode": 1,
+    "reward": -14317.024166202424,
+    "final_mass": 646.6531279609849,
+    "energy": 1107.3545883268137,
+    "safety_violations": 105,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": 3.6106701464907474,
+      "energy": -0.6244153438788684,
+      "safety": -150.0,
+      "terminal": 46.69374407803025,
+      "total": -100.32000111935787
+    }
+  },
+  {
+    "episode": 2,
+    "reward": -9562.950065943445,
+    "final_mass": 1151.5996822908867,
+    "energy": 2209.0994964686124,
+    "safety_violations": 73,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": 12.646345403779605,
+      "energy": -2.3610484707529764,
+      "safety": 0.0,
+      "terminal": -963.1993645817734,
+      "total": -952.9140676487467
+    }
+  }
+]

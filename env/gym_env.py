@@ -66,7 +66,7 @@ class ThickenerDewateringEnv(gym.Env):
         )
 
         self.observation_space = spaces.Box(
-            low=0, high=np.inf, shape=(9,), dtype=np.float32
+            low=0, high=np.inf, shape=(15,), dtype=np.float32
         )
 
         self.verbose = verbose
@@ -92,6 +92,7 @@ class ThickenerDewateringEnv(gym.Env):
         self.prev_c_aver = 0.66
         self.prev_m_fp = 0.0
         self.last_c_uf = float(DEFAULT_INITIAL_CONCENTRATION_PROFILE[-1])
+        self.action_history = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
 
     def _sample_feed_conditions(self):
         if self.feed_volatility == "high":
@@ -104,11 +105,15 @@ class ThickenerDewateringEnv(gym.Env):
     def _make_obs(self, c_uf: float, mass_buf: float) -> np.ndarray:
         price = self.pricing.get_price(self.timecnt)
         remaining = max(self.max_steps - self.policy_stepcnt, 0)
-        return np.array([
+        base_obs = [
             c_uf, self.v_buf, self.c_aver, self.m_fp,
             mass_buf, price, remaining,
             self.Qf, self.Cf,
-        ], dtype=np.float32)
+        ]
+        hist_obs = []
+        for q_uf_hist, q_fp_hist in self.action_history:
+            hist_obs.extend([q_uf_hist, q_fp_hist])
+        return np.array(base_obs + hist_obs, dtype=np.float32)
 
     def reset(self, seed: Optional[int] = None, options=None):
         super().reset(seed=seed)
@@ -127,6 +132,8 @@ class ThickenerDewateringEnv(gym.Env):
     def step(self, action: np.ndarray):
         self.Q_uf = float(np.clip(action[0], 0.0, 50.0))
         self.Q_fp = float(np.clip(action[1], 0.0, 70.0))
+        self.action_history.pop(0)
+        self.action_history.append((self.Q_uf, self.Q_fp))
 
         prev_q_uf = self.prev_q_uf
         prev_q_fp = self.prev_q_fp

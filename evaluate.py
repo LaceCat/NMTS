@@ -107,10 +107,18 @@ def main():
     # 加载模型
     if args.algo == 'esac':
         from algorithms.esac import ESACAgent
-        agent = ESACAgent(device=args.device)
+        agent = ESACAgent(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            device=args.device,
+        )
     else:
         from algorithms.td3 import TD3Agent
-        agent = TD3Agent(device=args.device)
+        agent = TD3Agent(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            device=args.device,
+        )
 
     if not agent.load(args.checkpoint):
         print("加载模型失败，退出")

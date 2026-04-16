@@ -1,0 +1,36 @@
+{
+  "description": "Average initial concentration profile from 10 cold-start runs",
+  "method": {
+    "start_state": "all-zero 10-layer concentration profile",
+    "underflow_q_uf": 0.0,
+    "feed_qf_distribution": [40.0, 45.0],
+    "feed_cf_distribution": [0.35, 0.40],
+    "stop_condition": "bottom-layer concentration reaches previous default tail concentration"
+  },
+  "runs": 10,
+  "seeds": [
+    1000,
+    1001,
+    1002,
+    1003,
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009
+  ],
+  "mean_reach_minute": 176.0,
+  "average_profile": [
+    0.02039303,
+    0.03981066,
+    0.08502988,
+    0.16719616,
+    0.29188528,
+    0.44878692,
+    0.486208,
+    0.53520916,
+    0.59008991,
+    0.65434479
+  ]
+}

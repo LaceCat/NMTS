@@ -553,7 +553,7 @@ def _apply_stage_transition_tuning(agent, stage: dict):
     return updates
 
 
-def _build_agent(args):
+def _build_agent(args, state_dim: int, action_dim: int):
     if args.algo == "esac":
         from algorithms.esac import ESACAgent
 
@@ -563,6 +563,8 @@ def _build_agent(args):
         lr_c = args.lr_critic if args.lr_critic > 0 else 3e-3
 
         agent = ESACAgent(
+            state_dim=state_dim,
+            action_dim=action_dim,
             buffer_capacity=buffer_cap,
             batch_size=batch,
             hidden_dim=args.hidden_dim,
@@ -582,6 +584,8 @@ def _build_agent(args):
         lr_c = args.lr_critic if args.lr_critic > 0 else 1e-3
 
         agent = TD3Agent(
+            state_dim=state_dim,
+            action_dim=action_dim,
             buffer_capacity=buffer_cap,
             batch_size=batch,
             hidden_dim=args.hidden_dim,
@@ -614,7 +618,11 @@ def train():
         reward_config=reward_config,
     )
 
-    agent, algo_name = _build_agent(args)
+    agent, algo_name = _build_agent(
+        args,
+        state_dim=env.observation_space.shape[0],
+        action_dim=env.action_space.shape[0],
+    )
     stage1_epochs, stage2_epochs = _resolve_curriculum_lengths(args)
 
     start_epoch = 1
