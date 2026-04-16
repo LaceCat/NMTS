@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual env
+.venv/
+venv/
+
+# Checkpoints & training artifacts
+checkpoints/
+checkpoints_*/
+buffer_data/
+logs/
+plots/
+*_run_*/
+
+# Large files
+*.gif
+*.npz
+*.pth
+*.pt
+*.onnx
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
