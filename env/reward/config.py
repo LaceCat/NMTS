@@ -10,6 +10,8 @@ Design priority:
 
 from dataclasses import dataclass
 
+from env.constants import DEFAULT_CONTROL_STEPS
+
 
 @dataclass
 class RewardConfig:
@@ -17,7 +19,7 @@ class RewardConfig:
 
     # Basic task settings
     target_mass: float = 400.0
-    max_steps: int = 288
+    max_steps: int = DEFAULT_CONTROL_STEPS
     enable_target_objective: bool = True
 
     @property

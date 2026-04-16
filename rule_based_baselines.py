@@ -21,6 +21,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
+from env.constants import DEFAULT_CONTROL_STEPS, DEFAULT_DECISION_INTERVAL
 from env.gym_env import ThickenerDewateringEnv
 from env.reward.config import RewardConfig
 from env.reward.pricing import PricingPresets
@@ -34,8 +35,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate rule-based baselines")
     parser.add_argument("--seeds", type=int, default=5, help="Number of evaluation seeds")
     parser.add_argument("--seed_start", type=int, default=91, help="Starting seed")
-    parser.add_argument("--steps", type=int, default=288, help="Decision steps per episode")
-    parser.add_argument("--interval", type=int, default=5, help="Physical minutes per decision step")
+    parser.add_argument("--steps", type=int, default=DEFAULT_CONTROL_STEPS, help="Decision steps per episode")
+    parser.add_argument("--interval", type=int, default=DEFAULT_DECISION_INTERVAL, help="Physical minutes per decision step")
     parser.add_argument("--target", type=float, default=TARGET_MASS, help="Target dry mass")
     parser.add_argument(
         "--save_json",

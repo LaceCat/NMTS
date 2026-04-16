@@ -23,6 +23,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from env.gym_env import ThickenerDewateringEnv
+from env.constants import DEFAULT_CONTROL_STEPS, DEFAULT_DECISION_INTERVAL
 from env.reward.config import RewardConfig
 from env.reward.pricing import PricingPresets
 from utils.metrics import compute_pass_rate
@@ -35,8 +36,8 @@ def parse_args():
     parser.add_argument("--algo", type=str, default="esac", choices=["esac", "td3"], help="Training algorithm")
 
     parser.add_argument("--target", type=float, default=400.0, help="Target dry mass in tons")
-    parser.add_argument("--steps", type=int, default=288, help="Decision steps per episode")
-    parser.add_argument("--interval", type=int, default=5, help="Physical minutes per decision step")
+    parser.add_argument("--steps", type=int, default=DEFAULT_CONTROL_STEPS, help="Decision steps per episode")
+    parser.add_argument("--interval", type=int, default=DEFAULT_DECISION_INTERVAL, help="Physical minutes per decision step")
 
     parser.add_argument("--epochs", type=int, default=1000, help="Number of training epochs")
     parser.add_argument("--episodes_per_epoch", type=int, default=5, help="Episodes per epoch")

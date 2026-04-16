@@ -16,9 +16,14 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import Optional, Dict, Tuple
 
+from .constants import (
+    AVAILABLE_CONTROL_MINUTES,
+    DEFAULT_CONTROL_STEPS,
+    STARTUP_FILL_MINUTES,
+    TOTAL_PROCESS_MINUTES,
+)
 from .physics.thickener import (
     ThickenerModel,
-    DEFAULT_INITIAL_CONCENTRATION_PROFILE,
     DEFAULT_THICKENER_STATE,
 )
 from .physics.buffer_press import BufferPressModel
@@ -32,18 +37,23 @@ class ThickenerDewateringEnv(gym.Env):
 
     def __init__(
         self,
-        max_steps: int = 288,
+        max_steps: int = DEFAULT_CONTROL_STEPS,
         decision_interval: int = 5,
         target_mass: float = 400.0,
         pricing: Optional[ElectricityPricing] = None,
         reward_config: Optional[RewardConfig] = None,
         feed_volatility: str = "normal",
         verbose: bool = False,
+        total_minutes: int = TOTAL_PROCESS_MINUTES,
+        startup_minutes: int = STARTUP_FILL_MINUTES,
     ):
         super().__init__()
 
         self.max_steps = max_steps
         self.decision_interval = max(1, decision_interval)
+        self.total_minutes = int(total_minutes)
+        self.startup_minutes = int(startup_minutes)
+        self.available_control_minutes = self.total_minutes
 
         self.thickener = ThickenerModel()
         self.buffer_press = BufferPressModel()
@@ -77,21 +87,22 @@ class ThickenerDewateringEnv(gym.Env):
         self.Q_fp = 0.0
         self.Qf = 40.0
         self.Cf = 0.35
-        self.thickener_state = DEFAULT_THICKENER_STATE.copy()
+        self.thickener_state = np.ones_like(DEFAULT_THICKENER_STATE, dtype=np.float64) * 1e6
         self.v_buf = 0.0
         self.m_fp = 0.0
-        self.c_aver = 0.66
+        self.c_aver = 0.0
         self.timecnt = 0
         self.policy_stepcnt = 0
         self.energy_cost_sum = 0.0
         self.target_reached = False
+        self.warmup_minutes_used = 0
 
         self.prev_q_uf = 0.0
         self.prev_q_fp = 0.0
         self.prev_v_buf = 0.0
-        self.prev_c_aver = 0.66
+        self.prev_c_aver = 0.0
         self.prev_m_fp = 0.0
-        self.last_c_uf = float(DEFAULT_INITIAL_CONCENTRATION_PROFILE[-1])
+        self.last_c_uf = 0.0
         self.action_history = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
 
     def _sample_feed_conditions(self):
@@ -123,6 +134,46 @@ class ThickenerDewateringEnv(gym.Env):
         self._init_state()
         self._sample_feed_conditions()
 
+        warmup_limit = max(int(self.startup_minutes), 1)
+        target_c_uf = 0.66
+        baseline_Q_uf = 20.0
+
+        # Physical cold start: the thickener is initially filled with pure water.
+        self.thickener_state = np.ones(10, dtype=np.float64) * 1e6
+        self.last_c_uf = 0.0
+        self.timecnt = 0
+
+        warmup_used = 0
+        while self.last_c_uf < target_c_uf and warmup_used < warmup_limit:
+            c_uf_floor, self.thickener_state = self.thickener.step(
+                baseline_Q_uf, self.Qf, self.Cf, self.thickener_state
+            )
+            self.last_c_uf = float(c_uf_floor[-1])
+            warmup_used += 1
+
+        if self.last_c_uf < target_c_uf:
+            raise RuntimeError(
+                f"Warm-up failed to reach c_uf={target_c_uf:.2f} within {warmup_limit} minutes; "
+                f"last_c_uf={self.last_c_uf:.4f}, Qf={self.Qf:.3f}, Cf={self.Cf:.4f}"
+            )
+
+        self.Q_uf = baseline_Q_uf
+        self.Q_fp = 0.0
+        self.prev_q_uf = baseline_Q_uf
+        self.prev_q_fp = 0.0
+        self.timecnt = 0
+        self.policy_stepcnt = 0
+        self.m_fp = 0.0
+        self.v_buf = 0.0
+        self.c_aver = self.last_c_uf
+        self.prev_v_buf = self.v_buf
+        self.prev_c_aver = self.c_aver
+        self.prev_m_fp = 0.0
+        self.energy_cost_sum = 0.0
+        self.target_reached = False
+        self.action_history = [(baseline_Q_uf, 0.0)] * 3
+        self.warmup_minutes_used = warmup_used
+
         c_uf = self.last_c_uf
         mass_buf = (self.c_aver * self.v_buf * self.thickener.c2d(self.c_aver)
                     if self.v_buf > 0 else 0.0)
@@ -148,7 +199,10 @@ class ThickenerDewateringEnv(gym.Env):
         final_c_uf = self.last_c_uf
         last_violations = []
 
-        for _ in range(self.decision_interval):
+        minutes_left = max(self.total_minutes - self.timecnt, 0)
+        minutes_this_step = min(self.decision_interval, minutes_left)
+
+        for _ in range(minutes_this_step):
             step_energy, is_safe, violations, c_uf = self._step_minute_physics()
             total_energy_cost += step_energy
             final_c_uf = c_uf
@@ -212,7 +266,7 @@ class ThickenerDewateringEnv(gym.Env):
                     if self.v_buf > 0 else 0.0)
         obs = self._make_obs(final_c_uf, mass_buf)
 
-        truncated = self.policy_stepcnt >= self.max_steps
+        truncated = self.policy_stepcnt >= self.max_steps or self.timecnt >= self.total_minutes
         if truncated:
             done = True
 
@@ -228,6 +282,9 @@ class ThickenerDewateringEnv(gym.Env):
             "reward_breakdown": breakdown,
             "target_reached": self.target_reached,
             "policy_step": self.policy_stepcnt,
+            "startup_minutes": self.startup_minutes,
+            "total_minutes": self.total_minutes,
+            "available_control_minutes": self.available_control_minutes,
         }
 
         if self.verbose:

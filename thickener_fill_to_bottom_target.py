@@ -1,10 +1,10 @@
 """
-Simulate thickener filling from an all-zero 10-layer concentration profile
+Simulate thickener warm-up from a pure-water initial state
 until the bottom-layer concentration reaches a target value.
 
 Default assumption:
 - typical feed: Qf = 42.5 m^3/h, Cf = 0.375
-- no underflow withdrawal during the fill-up diagnostic: Q_uf = 0.0 m^3/h
+- underflow withdrawal can be specified for the warm-up diagnostic
 
 Outputs:
 - a GIF animation of the filling process
@@ -43,7 +43,7 @@ class FrameRecord:
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Fill the thickener from zero profile until bottom concentration reaches a target."
+        description="Warm up the thickener from pure water until bottom concentration reaches a target."
     )
     parser.add_argument("--qf", type=float, default=42.5, help="Feed flow rate Qf in m^3/h.")
     parser.add_argument("--cf", type=float, default=0.375, help="Feed volume fraction Cf.")
@@ -73,16 +73,13 @@ def parse_args():
 def density_to_concentration_profile(model: ThickenerModel, state: np.ndarray) -> np.ndarray:
     concentrations = []
     for value in state:
-        if value <= 1e-12:
-            concentrations.append(0.0)
-        else:
-            concentrations.append(max(0.0, model.d2c(value / 1e6)))
+        concentrations.append(max(0.0, model.d2c(value / 1e6)))
     return np.array(concentrations, dtype=np.float64)
 
 
 def run_simulation(args) -> tuple[list[FrameRecord], list[list[float]], float | None]:
     model = ThickenerModel()
-    state = np.zeros(model.N_LAYERS, dtype=np.float64)
+    state = np.ones(model.N_LAYERS, dtype=np.float64) * 1e6
 
     frame_stride = max(1, int(args.frame_stride))
     history: list[FrameRecord] = []
@@ -136,7 +133,7 @@ def build_animation(
     ax_trend = fig.add_subplot(gs[0, 2])
 
     fig.suptitle(
-        f"Thickener Fill-Up From Zero Profile | Qf={qf:.2f} m^3/h, Cf={cf:.3f}, Q_uf={q_uf:.2f}",
+        f"Thickener Warm-Up From Pure Water | Qf={qf:.2f} m^3/h, Cf={cf:.3f}, Q_uf={q_uf:.2f}",
         fontsize=13,
         fontweight="bold",
     )
@@ -261,7 +258,7 @@ def main():
     history, csv_rows, crossing_time = run_simulation(args)
 
     stem = (
-        f"fill_zero_to_bottom_{str(args.target).replace('.', 'p')}"
+        f"warmup_purewater_to_bottom_{str(args.target).replace('.', 'p')}"
         f"_qf{str(args.qf).replace('.', 'p')}"
         f"_cf{str(args.cf).replace('.', 'p')}"
         f"_quf{str(args.q_uf).replace('.', 'p')}"

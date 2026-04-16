@@ -18,6 +18,7 @@ import numpy as np
 import torch
 
 from algorithms.td3 import TD3Agent
+from env.constants import DEFAULT_CONTROL_STEPS, DEFAULT_DECISION_INTERVAL
 from env.gym_env import ThickenerDewateringEnv
 from env.reward.config import RewardConfig
 from env.reward.pricing import PricingPresets
@@ -50,7 +51,7 @@ class CustomRewardScheme:
         if current_mass < self.target_mass:
             prod_reward = delta_m_fp * 3.0
         else:
-            prod_reward = -delta_m_fp * 5.0
+            prod_reward = -delta_m_fp * 0.5
         reward += prod_reward
         breakdown["production"] = prod_reward
 
@@ -60,7 +61,7 @@ class CustomRewardScheme:
 
         safety_penalty = 0.0
         if not is_safe:
-            safety_penalty = -150.0
+            safety_penalty = -1000.0
         reward += safety_penalty
         breakdown["safety"] = safety_penalty
 
@@ -73,7 +74,7 @@ class CustomRewardScheme:
             elif self.target_mass <= current_mass <= self.upper_mass:
                 terminal_reward = 2000.0
             else:
-                terminal_reward = -(current_mass - self.upper_mass) * 10.0
+                terminal_reward = -(current_mass - self.upper_mass) * 4.0
 
         reward += terminal_reward
         breakdown["terminal"] = terminal_reward
@@ -85,8 +86,8 @@ class CustomRewardScheme:
 def parse_args():
     parser = argparse.ArgumentParser(description="Train TD3 with custom handcrafted reward")
     parser.add_argument("--episodes", type=int, default=500, help="Training episodes")
-    parser.add_argument("--max_steps", type=int, default=288, help="Decision steps per episode")
-    parser.add_argument("--interval", type=int, default=5, help="Physical minutes per decision step")
+    parser.add_argument("--max_steps", type=int, default=DEFAULT_CONTROL_STEPS, help="Decision steps per episode")
+    parser.add_argument("--interval", type=int, default=DEFAULT_DECISION_INTERVAL, help="Physical minutes per decision step")
     parser.add_argument("--target", type=float, default=400.0, help="Target dry mass")
     parser.add_argument("--upper_mass", type=float, default=420.0, help="Upper preferred mass bound")
     parser.add_argument("--warmup_steps", type=int, default=1000, help="Random warmup steps")
@@ -131,6 +132,12 @@ def parse_args():
         type=str,
         default="checkpoints/custom_td3",
         help="Directory for checkpoints and logs",
+    )
+    parser.add_argument(
+        "--resume_checkpoint",
+        type=str,
+        default=None,
+        help="Optional checkpoint path for continuing TD3 training",
     )
     parser.add_argument("--save_every", type=int, default=50, help="Checkpoint interval in episodes")
     return parser.parse_args()
@@ -181,12 +188,20 @@ def train_custom_td3(args):
     history = []
     total_steps = 0
     best_safe_mass_gap = float("inf")
+    resumed = False
+
+    if args.resume_checkpoint:
+        resumed = agent.load(args.resume_checkpoint)
+        if resumed:
+            total_steps = max(total_steps, args.warmup_steps)
 
     print("=== 开始基于自定义奖励的 TD3 浓密脱水训练 ===")
     print(
         f"device={args.device} | episodes={args.episodes} | max_steps={args.max_steps} | "
         f"interval={args.interval} | target={args.target}~{args.upper_mass}"
     )
+    if args.resume_checkpoint:
+        print(f"resume_checkpoint={args.resume_checkpoint} | resumed={resumed}")
 
     for episode in range(args.episodes):
         state, _ = env.reset(seed=args.seed + episode)
@@ -208,7 +223,9 @@ def train_custom_td3(args):
                 energy_cost=info["energy_cost_step"],
                 is_safe=not info["safety_violation"],
                 current_mass=info["current_mass"],
-                step=info["policy_step"],
+                # info["policy_step"] is 1-based after env.step(), while the reward
+                # terminal condition is written against a 0-based step index.
+                step=max(int(info["policy_step"]) - 1, 0),
                 max_steps=args.max_steps,
             )
 
