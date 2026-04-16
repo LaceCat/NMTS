@@ -1,0 +1,1502 @@
+[
+  {
+    "episode": 1,
+    "reward": -260859.92400263943,
+    "final_mass": 1295.643941138921,
+    "energy": 1097.431586266089,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -15.160360869226452,
+      "energy": -2.264899860785297,
+      "safety": -1000.0,
+      "terminal": -2626.931823416763,
+      "total": -3644.357084146775
+    }
+  },
+  {
+    "episode": 2,
+    "reward": -260858.21284580434,
+    "final_mass": 1292.8161908026716,
+    "energy": 1120.1437649898587,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -3.2209239078763403,
+      "energy": -1.1256349850161098,
+      "safety": -1000.0,
+      "terminal": -2618.448572408015,
+      "total": -3622.7951313009075
+    }
+  },
+  {
+    "episode": 3,
+    "reward": -261269.77008290266,
+    "final_mass": 1399.875563061262,
+    "energy": 1063.0269287309702,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -4.470522691438873,
+      "energy": -1.5091071820732735,
+      "safety": -1000.0,
+      "terminal": -2939.626689183786,
+      "total": -3945.606319057298
+    }
+  },
+  {
+    "episode": 4,
+    "reward": -261710.52421842216,
+    "final_mass": 1497.0827446166666,
+    "energy": 1153.5275105838273,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -6.351310711128917,
+      "energy": -1.3690737247840634,
+      "safety": -1000.0,
+      "terminal": -3231.2482338499995,
+      "total": -4238.968618285912
+    }
+  },
+  {
+    "episode": 5,
+    "reward": -261121.77742768536,
+    "final_mass": 1340.1371707117,
+    "energy": 1278.638272202399,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -3.9092382971653024,
+      "energy": -1.1782726287664789,
+      "safety": -1000.0,
+      "terminal": -2760.4115121351,
+      "total": -3765.499023061032
+    }
+  },
+  {
+    "episode": 6,
+    "reward": -280908.74197868735,
+    "final_mass": 275.32425777974794,
+    "energy": 975.9146596479246,
+    "safety_violations": 280,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": 9.819253520991367,
+      "energy": -0.975496841794387,
+      "safety": -1000.0,
+      "terminal": -1246.7574222025205,
+      "total": -2237.9136655233233
+    }
+  },
+  {
+    "episode": 7,
+    "reward": -280409.8771453132,
+    "final_mass": 958.5512073820211,
+    "energy": 893.0756375170723,
+    "safety_violations": 279,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -6.47340484410779,
+      "energy": -0.8758251286684547,
+      "safety": -1000.0,
+      "terminal": -1615.6536221460633,
+      "total": -2623.0028521188397
+    }
+  },
+  {
+    "episode": 8,
+    "reward": -259034.21649889604,
+    "final_mass": 876.7187220169201,
+    "energy": 808.7785511989252,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -4.4169969427308615,
+      "energy": -1.0237112763415634,
+      "safety": -1000.0,
+      "terminal": -1370.1561660507602,
+      "total": -2375.596874269833
+    }
+  },
+  {
+    "episode": 9,
+    "reward": -260634.67383501786,
+    "final_mass": 1248.3909070630264,
+    "energy": 1019.0576582713327,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -6.668001508329098,
+      "energy": -0.9827766211932238,
+      "safety": -1000.0,
+      "terminal": -2485.1727211890793,
+      "total": -3492.8234993186015
+    }
+  },
+  {
+    "episode": 10,
+    "reward": -261751.33238263277,
+    "final_mass": 1746.6141797512148,
+    "energy": 1264.9868158722734,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -7.835214662418366,
+      "energy": -1.184528909831655,
+      "safety": -1000.0,
+      "terminal": -3979.8425392536446,
+      "total": -4988.862282825895
+    }
+  },
+  {
+    "episode": 11,
+    "reward": -265380.0026926475,
+    "final_mass": 2360.389567086128,
+    "energy": 1619.5497969428686,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -12.303655412179978,
+      "energy": -2.036268260936711,
+      "safety": -1000.0,
+      "terminal": -5821.168701258384,
+      "total": -6835.508624931501
+    }
+  },
+  {
+    "episode": 12,
+    "reward": -265108.324209086,
+    "final_mass": 2506.274130701597,
+    "energy": 1909.0225697163237,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -9.893036374247004,
+      "energy": -2.7098996674688767,
+      "safety": -1000.0,
+      "terminal": -6258.822392104792,
+      "total": -7271.425328146508
+    }
+  },
+  {
+    "episode": 13,
+    "reward": -265365.1881107773,
+    "final_mass": 2538.2253737484325,
+    "energy": 2154.7596982516,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -11.129717339842955,
+      "energy": -2.875,
+      "safety": -1000.0,
+      "terminal": -6354.6761212452975,
+      "total": -7368.68083858514
+    }
+  },
+  {
+    "episode": 14,
+    "reward": -265279.27663365466,
+    "final_mass": 2529.2238119548983,
+    "energy": 2072.329379056236,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -11.15163711072637,
+      "energy": -2.6814885400002875,
+      "safety": -1000.0,
+      "terminal": -6327.671435864695,
+      "total": -7341.504561515421
+    }
+  },
+  {
+    "episode": 15,
+    "reward": -264318.8478571046,
+    "final_mass": 2546.301930793495,
+    "energy": 1998.481260118188,
+    "safety_violations": 256,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -11.149903420823193,
+      "energy": -2.875,
+      "safety": -1000.0,
+      "terminal": -6378.905792380485,
+      "total": -7392.930695801308
+    }
+  },
+  {
+    "episode": 16,
+    "reward": -265304.72365423164,
+    "final_mass": 2559.744708279603,
+    "energy": 1870.5232554763447,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.392782527014788,
+      "energy": -1.5687063145964617,
+      "safety": -1000.0,
+      "terminal": -6419.234124838809,
+      "total": -7431.19561368042
+    }
+  },
+  {
+    "episode": 17,
+    "reward": -264961.9068890289,
+    "final_mass": 2479.4386748017814,
+    "energy": 1817.0450427669991,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.904905300908467,
+      "energy": -2.875,
+      "safety": -1000.0,
+      "terminal": -6178.316024405344,
+      "total": -7192.095929706253
+    }
+  },
+  {
+    "episode": 18,
+    "reward": -263990.85966723715,
+    "final_mass": 1786.7115088435169,
+    "energy": 1405.2628830753308,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -13.529707692668808,
+      "energy": -2.197480406935273,
+      "safety": -1000.0,
+      "terminal": -4100.134526530551,
+      "total": -5115.861714630155
+    }
+  },
+  {
+    "episode": 19,
+    "reward": -266002.2643305604,
+    "final_mass": 2039.8388555968513,
+    "energy": 1413.2655277104395,
+    "safety_violations": 260,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -11.68364077510978,
+      "energy": -1.9541251254343293,
+      "safety": -1000.0,
+      "terminal": -4859.516566790554,
+      "total": -5873.154332691098
+    }
+  },
+  {
+    "episode": 20,
+    "reward": -263139.57485490246,
+    "final_mass": 2074.0867637615715,
+    "energy": 1441.1726413810989,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -6.370640806085703,
+      "energy": -1.0105599750244987,
+      "safety": -1000.0,
+      "terminal": -4962.260291284714,
+      "total": -5969.641492065824
+    }
+  },
+  {
+    "episode": 21,
+    "reward": -265220.2050752786,
+    "final_mass": 2096.238668581687,
+    "energy": 1423.1111772636762,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.568813224832866,
+      "energy": -1.744978695999798,
+      "safety": -1000.0,
+      "terminal": -5028.71600574506,
+      "total": -6041.029797665893
+    }
+  },
+  {
+    "episode": 22,
+    "reward": -263506.44008828053,
+    "final_mass": 2156.0834311089106,
+    "energy": 1500.8325788615998,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -8.793540044790461,
+      "energy": -1.4890634041858022,
+      "safety": -1000.0,
+      "terminal": -5208.2502933267315,
+      "total": -6218.532896775708
+    }
+  },
+  {
+    "episode": 23,
+    "reward": -263645.4909063913,
+    "final_mass": 2196.624085546866,
+    "energy": 1469.167204563945,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -9.899430759488041,
+      "energy": -1.6279915772497267,
+      "safety": -1000.0,
+      "terminal": -5329.872256640598,
+      "total": -6341.3996789773355
+    }
+  },
+  {
+    "episode": 24,
+    "reward": -262821.08861066133,
+    "final_mass": 2235.480690143887,
+    "energy": 1483.5592983888937,
+    "safety_violations": 256,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -9.447562059847769,
+      "energy": -1.5621859850425341,
+      "safety": -1000.0,
+      "terminal": -5446.442070431661,
+      "total": -6457.451818476551
+    }
+  },
+  {
+    "episode": 25,
+    "reward": -263052.6295513265,
+    "final_mass": 2288.707727424399,
+    "energy": 1507.9332828623403,
+    "safety_violations": 256,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -8.952830818378516,
+      "energy": -1.4161328646963103,
+      "safety": -1000.0,
+      "terminal": -5606.123182273197,
+      "total": -6616.492145956272
+    }
+  },
+  {
+    "episode": 26,
+    "reward": -264103.66636044247,
+    "final_mass": 2302.0347819559897,
+    "energy": 1507.651743684195,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -11.487057857398213,
+      "energy": -1.8753486008545839,
+      "safety": -1000.0,
+      "terminal": -5646.104345867969,
+      "total": -6659.4667523262215
+    }
+  },
+  {
+    "episode": 27,
+    "reward": -264383.67969803885,
+    "final_mass": 2367.4204738560643,
+    "energy": 1551.743409029218,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -9.792530230416105,
+      "energy": -1.593324187461918,
+      "safety": -1000.0,
+      "terminal": -5842.261421568193,
+      "total": -6853.647275986072
+    }
+  },
+  {
+    "episode": 28,
+    "reward": -264516.73981708346,
+    "final_mass": 2402.514560860656,
+    "energy": 1563.139488114676,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -9.774260900689114,
+      "energy": -1.4925212037063986,
+      "safety": -1000.0,
+      "terminal": -5947.543682581967,
+      "total": -6958.810464686362
+    }
+  },
+  {
+    "episode": 29,
+    "reward": -264524.7590056004,
+    "final_mass": 2402.143418155071,
+    "energy": 1557.0742357099418,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -13.15085361611682,
+      "energy": -2.2104524230203157,
+      "safety": -1000.0,
+      "terminal": -5946.430254465213,
+      "total": -6961.79156050435
+    }
+  },
+  {
+    "episode": 30,
+    "reward": -264256.4395780574,
+    "final_mass": 2342.601769860696,
+    "energy": 1520.3025619847815,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -12.957255592797992,
+      "energy": -2.1020189693765134,
+      "safety": -1000.0,
+      "terminal": -5767.805309582089,
+      "total": -6782.864584144263
+    }
+  },
+  {
+    "episode": 31,
+    "reward": -263352.6038627569,
+    "final_mass": 2125.458928613019,
+    "energy": 1427.4565777818354,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.57521836767637,
+      "energy": -1.7100927508814543,
+      "safety": -1000.0,
+      "terminal": -5116.3767858390565,
+      "total": -6128.662096957614
+    }
+  },
+  {
+    "episode": 32,
+    "reward": -264119.3950220476,
+    "final_mass": 2073.3788803522657,
+    "energy": 1387.8292480146092,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -2.796865319198332,
+      "energy": -0.9716219540941797,
+      "safety": -1000.0,
+      "terminal": -4960.136641056797,
+      "total": -5963.90512833009
+    }
+  },
+  {
+    "episode": 33,
+    "reward": -263535.98572958465,
+    "final_mass": 1940.2039221578566,
+    "energy": 1276.9164596469886,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -11.227637598910633,
+      "energy": -1.5593719139605247,
+      "safety": -1000.0,
+      "terminal": -4560.61176647357,
+      "total": -5573.398775986441
+    }
+  },
+  {
+    "episode": 34,
+    "reward": -262954.9809475664,
+    "final_mass": 1810.9454207177268,
+    "energy": 1153.345961364994,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -6.971699985626401,
+      "energy": -0.7903701928917788,
+      "safety": -1000.0,
+      "terminal": -4172.8362621531805,
+      "total": -5180.598332331699
+    }
+  },
+  {
+    "episode": 35,
+    "reward": -261632.5847795368,
+    "final_mass": 1500.338540934867,
+    "energy": 977.1099768782533,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -7.245694577973609,
+      "energy": -0.7681624904991431,
+      "safety": -1000.0,
+      "terminal": -3241.015622804601,
+      "total": -4249.029479873074
+    }
+  },
+  {
+    "episode": 36,
+    "reward": -261722.00949233872,
+    "final_mass": 1526.8680728079114,
+    "energy": 980.6600449875895,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -3.536856244259525,
+      "energy": -0.6626252808850975,
+      "safety": -1000.0,
+      "terminal": -3320.604218423734,
+      "total": -4324.803699948879
+    }
+  },
+  {
+    "episode": 37,
+    "reward": -261538.65727127565,
+    "final_mass": 1488.1208661743894,
+    "energy": 914.1580145475763,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -2.328359741627537,
+      "energy": -0.7288498808369405,
+      "safety": -1000.0,
+      "terminal": -3204.3625985231683,
+      "total": -4207.4198081456325
+    }
+  },
+  {
+    "episode": 38,
+    "reward": -261083.13930102382,
+    "final_mass": 1618.2584192246347,
+    "energy": 930.308028674515,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -6.3384193200759,
+      "energy": -0.7669722302721355,
+      "safety": -1000.0,
+      "terminal": -3594.775257673904,
+      "total": -4601.880649224252
+    }
+  },
+  {
+    "episode": 39,
+    "reward": -260965.26755782595,
+    "final_mass": 1346.1529896503584,
+    "energy": 885.4797687429028,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.1187431036639737,
+      "energy": -0.7281433678091996,
+      "safety": -1000.0,
+      "terminal": -2778.4589689510753,
+      "total": -3780.3058554225486
+    }
+  },
+  {
+    "episode": 40,
+    "reward": -259254.25165263197,
+    "final_mass": 1157.5154751899956,
+    "energy": 978.5702416013952,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.37469715945667303,
+      "energy": -0.8367174003620365,
+      "safety": -1000.0,
+      "terminal": -2212.546425569987,
+      "total": -3213.757840129806
+    }
+  },
+  {
+    "episode": 41,
+    "reward": -259601.76807109345,
+    "final_mass": 983.5561986267357,
+    "energy": 1060.6885512256474,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.6388791586368825,
+      "energy": -1.5211763520157406,
+      "safety": -1000.0,
+      "terminal": -1690.6685958802072,
+      "total": -2692.8286513908597
+    }
+  },
+  {
+    "episode": 42,
+    "reward": -259211.86919582012,
+    "final_mass": 857.0673050601642,
+    "energy": 1268.7823494391155,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.19062313388883467,
+      "energy": -1.5250208997014714,
+      "safety": -1000.0,
+      "terminal": -1311.2019151804927,
+      "total": -2312.9175592140828
+    }
+  },
+  {
+    "episode": 43,
+    "reward": -260283.94066224524,
+    "final_mass": 850.0016711925805,
+    "energy": 1470.797396167035,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.9477184595754125,
+      "energy": -2.3006524102987926,
+      "safety": -1000.0,
+      "terminal": -1290.0050135777415,
+      "total": -2293.2533844476156
+    }
+  },
+  {
+    "episode": 44,
+    "reward": -259099.0417029926,
+    "final_mass": 791.7281798009565,
+    "energy": 1554.0258542175372,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.3154945316707654,
+      "energy": -1.6416118032310212,
+      "safety": -1000.0,
+      "terminal": -1115.1845394028694,
+      "total": -2118.1416457377713
+    }
+  },
+  {
+    "episode": 45,
+    "reward": -258665.4295221438,
+    "final_mass": 694.9473545829528,
+    "energy": 1514.5888091111406,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.5765188766804386,
+      "energy": -2.302642321698169,
+      "safety": -1000.0,
+      "terminal": -824.8420637488584,
+      "total": -1828.721224947237
+    }
+  },
+  {
+    "episode": 46,
+    "reward": -258624.24637140913,
+    "final_mass": 669.4621987431941,
+    "energy": 1640.1609092611,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.05495010727031513,
+      "energy": -1.6979568703508399,
+      "safety": -1000.0,
+      "terminal": -748.3865962295823,
+      "total": -1750.1395032072035
+    }
+  },
+  {
+    "episode": 47,
+    "reward": -258388.9079879732,
+    "final_mass": 621.8126193236606,
+    "energy": 1550.0645349205251,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.9993829750243322,
+      "energy": -2.3044060994104543,
+      "safety": -1000.0,
+      "terminal": -605.4378579709817,
+      "total": -1609.7416470454164
+    }
+  },
+  {
+    "episode": 48,
+    "reward": -258203.3217705642,
+    "final_mass": 579.9702086986747,
+    "energy": 1520.1484235975388,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.1883170082606966,
+      "energy": -1.9646835975072778,
+      "safety": -1000.0,
+      "terminal": -479.9106260960241,
+      "total": -1483.0636267017921
+    }
+  },
+  {
+    "episode": 49,
+    "reward": -257960.03718508477,
+    "final_mass": 528.4912209892694,
+    "energy": 1441.2740705978706,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.3090694508158549,
+      "energy": -0.9096542837656761,
+      "safety": -1000.0,
+      "terminal": -325.4736629678083,
+      "total": -1326.6923867023897
+    }
+  },
+  {
+    "episode": 50,
+    "reward": -257894.82998016255,
+    "final_mass": 508.0961131377656,
+    "energy": 1483.57682180958,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.9951092178614545,
+      "energy": -1.5383352802412391,
+      "safety": -1000.0,
+      "terminal": -264.2883394132968,
+      "total": -1266.8217839113995
+    }
+  },
+  {
+    "episode": 51,
+    "reward": -258864.60361083475,
+    "final_mass": 509.49156976082054,
+    "energy": 1409.1918398840085,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.7117145970489673,
+      "energy": -2.183637693820433,
+      "safety": -1000.0,
+      "terminal": -268.4747092824616,
+      "total": -1272.370061573331
+    }
+  },
+  {
+    "episode": 52,
+    "reward": -258837.8666153041,
+    "final_mass": 500.67075901394855,
+    "energy": 1417.9955611094226,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.0,
+      "energy": -1.7249999999999999,
+      "safety": -1000.0,
+      "terminal": -242.01227704184566,
+      "total": -1243.7372770418456
+    }
+  },
+  {
+    "episode": 53,
+    "reward": -257747.50312390982,
+    "final_mass": 526.3492996615076,
+    "energy": 1040.0904256251683,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.37952628985885895,
+      "energy": -0.7403229117968402,
+      "safety": -1000.0,
+      "terminal": -319.04789898452293,
+      "total": -1320.1677481861786
+    }
+  },
+  {
+    "episode": 54,
+    "reward": -257602.1449994368,
+    "final_mass": 546.5129141601336,
+    "energy": 572.9777643039612,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.8644121216237863,
+      "energy": -0.6022522339842757,
+      "safety": -1000.0,
+      "terminal": -379.53874248040086,
+      "total": -1381.005406836009
+    }
+  },
+  {
+    "episode": 55,
+    "reward": -257747.13058631474,
+    "final_mass": 578.537706749808,
+    "energy": 612.7912856600352,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.0,
+      "energy": -0.5763781829344915,
+      "safety": -1000.0,
+      "terminal": -475.6131202494239,
+      "total": -1476.1894984323585
+    }
+  },
+  {
+    "episode": 56,
+    "reward": -257510.5285090656,
+    "final_mass": 523.7319254778876,
+    "energy": 578.6406213004217,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.0,
+      "energy": -0.5752513141590416,
+      "safety": -1000.0,
+      "terminal": -311.1957764336627,
+      "total": -1311.7710277478218
+    }
+  },
+  {
+    "episode": 57,
+    "reward": -257540.56035734722,
+    "final_mass": 524.2460644605222,
+    "energy": 637.0351978532972,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.0,
+      "energy": -0.5750000000000001,
+      "safety": -1000.0,
+      "terminal": -312.7381933815667,
+      "total": -1313.3131933815666
+    }
+  },
+  {
+    "episode": 58,
+    "reward": -258430.73268084333,
+    "final_mass": 495.1533721816034,
+    "energy": 634.1738992963493,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.15918344370794557,
+      "energy": -0.5755011595770272,
+      "safety": -1000.0,
+      "terminal": -225.4601165448102,
+      "total": -1226.1948011480952
+    }
+  },
+  {
+    "episode": 59,
+    "reward": -258374.01741446057,
+    "final_mass": 486.0292485424337,
+    "energy": 607.8173719941668,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.0,
+      "energy": -0.590328608966404,
+      "safety": -1000.0,
+      "terminal": -198.08774562730116,
+      "total": -1198.6780742362675
+    }
+  },
+  {
+    "episode": 60,
+    "reward": -258419.47250141445,
+    "final_mass": 497.5536437499978,
+    "energy": 609.5197173857346,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.0,
+      "energy": -0.5750000000000001,
+      "safety": -1000.0,
+      "terminal": -232.66093124999333,
+      "total": -1233.2359312499934
+    }
+  },
+  {
+    "episode": 61,
+    "reward": -258263.45331829504,
+    "final_mass": 456.7690473670554,
+    "energy": 619.119440932897,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.0,
+      "energy": -0.5750291832757148,
+      "safety": -1000.0,
+      "terminal": -110.30714210116622,
+      "total": -1110.882171284442
+    }
+  },
+  {
+    "episode": 62,
+    "reward": -257541.60011511025,
+    "final_mass": 521.7197741291925,
+    "energy": 652.2808842655467,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.788106293966507,
+      "energy": -0.578029801959369,
+      "safety": -1000.0,
+      "terminal": -305.1593223875775,
+      "total": -1307.5254584835034
+    }
+  },
+  {
+    "episode": 63,
+    "reward": -258313.00812186004,
+    "final_mass": 710.7386520933262,
+    "energy": 685.422308932721,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -2.787903957366666,
+      "energy": -0.5954970705172056,
+      "safety": -1000.0,
+      "terminal": -872.2159562799786,
+      "total": -1875.5993573078626
+    }
+  },
+  {
+    "episode": 64,
+    "reward": -259542.00834168217,
+    "final_mass": 1007.7817504511097,
+    "energy": 759.9184542465849,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -3.0364808622346118,
+      "energy": -0.6213942962696504,
+      "safety": -1000.0,
+      "terminal": -1763.345251353329,
+      "total": -2767.003126511833
+    }
+  },
+  {
+    "episode": 65,
+    "reward": -260739.9806770373,
+    "final_mass": 1287.1749229122977,
+    "energy": 904.7194615230993,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -7.221800617062399,
+      "energy": -1.0062170297553013,
+      "safety": -1000.0,
+      "terminal": -2601.524768736893,
+      "total": -3609.7527863837104
+    }
+  },
+  {
+    "episode": 66,
+    "reward": -261257.3198659211,
+    "final_mass": 1407.0074827698731,
+    "energy": 1013.9585636550161,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -4.050211312090596,
+      "energy": -0.8052065711401348,
+      "safety": -1000.0,
+      "terminal": -2961.0224483096194,
+      "total": -3965.87786619285
+    }
+  },
+  {
+    "episode": 67,
+    "reward": -261868.96822645908,
+    "final_mass": 1541.3185950234551,
+    "energy": 1154.6155174618536,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -8.042271508480326,
+      "energy": -1.4293163925312795,
+      "safety": -1000.0,
+      "terminal": -3363.9557850703654,
+      "total": -4373.427372971377
+    }
+  },
+  {
+    "episode": 68,
+    "reward": -260931.2670992629,
+    "final_mass": 1551.7791780078303,
+    "energy": 1182.4691154980617,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -6.942370192194403,
+      "energy": -1.330358743287802,
+      "safety": -1000.0,
+      "terminal": -3395.3375340234907,
+      "total": -4403.610262958973
+    }
+  },
+  {
+    "episode": 69,
+    "reward": -260741.4836277924,
+    "final_mass": 1507.1530338709952,
+    "energy": 1159.853242860135,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -3.521071152686318,
+      "energy": -1.1408595723518569,
+      "safety": -1000.0,
+      "terminal": -3261.4591016129853,
+      "total": -4266.121032338024
+    }
+  },
+  {
+    "episode": 70,
+    "reward": -261761.34543241153,
+    "final_mass": 1509.136667437316,
+    "energy": 1182.322691057413,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -5.740292883992197,
+      "energy": -1.0618855093619994,
+      "safety": -1000.0,
+      "terminal": -3267.410002311948,
+      "total": -4274.212180705303
+    }
+  },
+  {
+    "episode": 71,
+    "reward": -260844.3425897945,
+    "final_mass": 1531.8120141406682,
+    "energy": 1190.4152824705113,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -5.50506342777112,
+      "energy": -0.9289122840592159,
+      "safety": -1000.0,
+      "terminal": -3335.436042422005,
+      "total": -4341.870018133835
+    }
+  },
+  {
+    "episode": 72,
+    "reward": -262245.3684801321,
+    "final_mass": 1623.78382943699,
+    "energy": 1215.2193417590136,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -5.45499896115507,
+      "energy": -1.1982190364124512,
+      "safety": -1000.0,
+      "terminal": -3611.3514883109697,
+      "total": -4618.004706308537
+    }
+  },
+  {
+    "episode": 73,
+    "reward": -262941.69510516716,
+    "final_mass": 1787.6676931350376,
+    "energy": 1287.9419060546104,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -9.147025661976613,
+      "energy": -1.4602761973783176,
+      "safety": -1000.0,
+      "terminal": -4103.003079405113,
+      "total": -5113.610381264468
+    }
+  },
+  {
+    "episode": 74,
+    "reward": -262570.5794204867,
+    "final_mass": 1942.6630200974398,
+    "energy": 1339.0654097983659,
+    "safety_violations": 257,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -9.157359363990054,
+      "energy": -1.5422286252673676,
+      "safety": -1000.0,
+      "terminal": -4567.98906029232,
+      "total": -5578.688648281577
+    }
+  },
+  {
+    "episode": 75,
+    "reward": -266032.00831983227,
+    "final_mass": 2470.638593201303,
+    "energy": 2030.665579044088,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.55728595093342,
+      "energy": -2.8337339680013525,
+      "safety": -1000.0,
+      "terminal": -6151.915779603909,
+      "total": -7165.306799522844
+    }
+  },
+  {
+    "episode": 76,
+    "reward": -266256.9464013181,
+    "final_mass": 2485.722881760719,
+    "energy": 2326.290842383569,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.464163147353247,
+      "energy": -2.671610638902557,
+      "safety": -1000.0,
+      "terminal": -6197.168645282156,
+      "total": -7210.304419068411
+    }
+  },
+  {
+    "episode": 77,
+    "reward": -266175.9711556244,
+    "final_mass": 2463.448385294238,
+    "energy": 2327.547106300557,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.958396188924326,
+      "energy": -2.875,
+      "safety": -1000.0,
+      "terminal": -6130.345155882715,
+      "total": -7144.1785520716385
+    }
+  },
+  {
+    "episode": 78,
+    "reward": -266098.29240042553,
+    "final_mass": 2446.26888580684,
+    "energy": 2318.333505662233,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.622584866436227,
+      "energy": -2.8104217997076173,
+      "safety": -1000.0,
+      "terminal": -6078.80665742052,
+      "total": -7092.239664086665
+    }
+  },
+  {
+    "episode": 79,
+    "reward": -266182.12561148935,
+    "final_mass": 2470.8845432267062,
+    "energy": 2283.2170094524736,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.995635972507444,
+      "energy": -2.271608751873089,
+      "safety": -1000.0,
+      "terminal": -6152.653629680119,
+      "total": -7165.920874404499
+    }
+  },
+  {
+    "episode": 80,
+    "reward": -266963.2809210693,
+    "final_mass": 2416.9689185660072,
+    "energy": 2275.2208503736088,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -10.462015565330603,
+      "energy": -2.342852168051815,
+      "safety": -1000.0,
+      "terminal": -5990.906755698022,
+      "total": -7003.711623431404
+    }
+  },
+  {
+    "episode": 81,
+    "reward": -259533.96685560112,
+    "final_mass": 872.2100087629539,
+    "energy": 1798.9697201500744,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -2.0230244886168975,
+      "energy": -2.132430445271475,
+      "safety": -1000.0,
+      "terminal": -1356.6300262888617,
+      "total": -2360.78548122275
+    }
+  },
+  {
+    "episode": 82,
+    "reward": -259338.65724198805,
+    "final_mass": 821.9339317193765,
+    "energy": 1803.9255495785424,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.0,
+      "energy": -1.7249999999999999,
+      "safety": -1000.0,
+      "terminal": -1205.8017951581294,
+      "total": -2207.5267951581295
+    }
+  },
+  {
+    "episode": 83,
+    "reward": -261259.79539421684,
+    "final_mass": 1059.689795115337,
+    "energy": 1799.2713013262685,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.8532506800602278,
+      "energy": -2.0086528549904745,
+      "safety": -1000.0,
+      "terminal": -1919.0693853460107,
+      "total": -2921.9312888810614
+    }
+  },
+  {
+    "episode": 84,
+    "reward": -261090.42940489427,
+    "final_mass": 1294.5076411411355,
+    "energy": 1571.9683976439471,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.3919573245789252,
+      "energy": -1.8858695455111876,
+      "safety": -1000.0,
+      "terminal": -2623.5229234234066,
+      "total": -3626.800750293497
+    }
+  },
+  {
+    "episode": 85,
+    "reward": -260752.22798843178,
+    "final_mass": 930.521728948653,
+    "energy": 1791.9036055558915,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.4324355809285407,
+      "energy": -1.5176912685064945,
+      "safety": -1000.0,
+      "terminal": -1531.565186845959,
+      "total": -2534.515313695394
+    }
+  },
+  {
+    "episode": 86,
+    "reward": -261829.30790220466,
+    "final_mass": 1216.0541899071843,
+    "energy": 1687.1175224593412,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.44156937520983774,
+      "energy": -1.7249999999999999,
+      "safety": -1000.0,
+      "terminal": -2388.162569721553,
+      "total": -3390.329139096763
+    }
+  },
+  {
+    "episode": 87,
+    "reward": -261226.22668416039,
+    "final_mass": 1115.0088441507057,
+    "energy": 1264.3291771636823,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.0159307416790853,
+      "energy": -2.2254326381116876,
+      "safety": -1000.0,
+      "terminal": -2085.026532452117,
+      "total": -3088.2678958319075
+    }
+  },
+  {
+    "episode": 88,
+    "reward": -261804.70923355944,
+    "final_mass": 1247.4708415426264,
+    "energy": 1377.821156734539,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.798877348687256,
+      "energy": -1.7249999999999999,
+      "safety": -1000.0,
+      "terminal": -2482.412524627879,
+      "total": -3484.9364019765662
+    }
+  },
+  {
+    "episode": 89,
+    "reward": -261420.18671919918,
+    "final_mass": 1160.8487189365133,
+    "energy": 1306.545595304978,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.9092063874284122,
+      "energy": -2.115770854765514,
+      "safety": -1000.0,
+      "terminal": -2222.5461568095398,
+      "total": -3225.5711340517337
+    }
+  },
+  {
+    "episode": 90,
+    "reward": -261841.39353294106,
+    "final_mass": 1257.5599625782768,
+    "energy": 1357.9545566415509,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.17687555397560573,
+      "energy": -2.1023513484861,
+      "safety": -1000.0,
+      "terminal": -2512.67988773483,
+      "total": -3514.959114637292
+    }
+  },
+  {
+    "episode": 91,
+    "reward": -261788.4431221301,
+    "final_mass": 1243.3826798363748,
+    "energy": 1381.0749743981044,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.5061537532119473,
+      "energy": -2.3026428346441334,
+      "safety": -1000.0,
+      "terminal": -2470.1480395091244,
+      "total": -3473.9568360969806
+    }
+  },
+  {
+    "episode": 92,
+    "reward": -262323.66851829266,
+    "final_mass": 1400.8999166677613,
+    "energy": 1163.078820526485,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.49456847978194673,
+      "energy": -2.300094093269481,
+      "safety": -1000.0,
+      "terminal": -2942.699750003284,
+      "total": -3945.4944125763354
+    }
+  },
+  {
+    "episode": 93,
+    "reward": -261257.66965532853,
+    "final_mass": 1341.4139629692638,
+    "energy": 1506.033354489878,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -2.2814181194810317,
+      "energy": -1.630501623794642,
+      "safety": -1000.0,
+      "terminal": -2764.2418889077917,
+      "total": -3768.1538086510673
+    }
+  },
+  {
+    "episode": 94,
+    "reward": -263713.7374425272,
+    "final_mass": 1729.1734953591936,
+    "energy": 1313.0372172537234,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -4.1160268048106445,
+      "energy": -1.8428539477167984,
+      "safety": -1000.0,
+      "terminal": -3927.5204860775807,
+      "total": -4933.479366830108
+    }
+  },
+  {
+    "episode": 95,
+    "reward": -262382.43927853205,
+    "final_mass": 1388.7472642990197,
+    "energy": 1402.707773372213,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -1.4112161330701838,
+      "energy": -2.301527079120823,
+      "safety": -1000.0,
+      "terminal": -2906.241792897059,
+      "total": -3909.95453610925
+    }
+  },
+  {
+    "episode": 96,
+    "reward": -263036.3015930699,
+    "final_mass": 1560.313342367675,
+    "energy": 1322.4819889208352,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -11.493545435046144,
+      "energy": -1.5320849753396748,
+      "safety": -1000.0,
+      "terminal": -3420.940027103025,
+      "total": -4433.96565751341
+    }
+  },
+  {
+    "episode": 97,
+    "reward": -262280.9998675299,
+    "final_mass": 1377.849139635341,
+    "energy": 1271.0507796042082,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -11.5450015798001,
+      "energy": -1.558813082685734,
+      "safety": -1000.0,
+      "terminal": -2873.5474189060233,
+      "total": -3886.6512335685093
+    }
+  },
+  {
+    "episode": 98,
+    "reward": -261151.28450970733,
+    "final_mass": 1351.0143980171076,
+    "energy": 1236.4317251926636,
+    "safety_violations": 258,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -13.704192048511231,
+      "energy": -2.313343465676016,
+      "safety": -1000.0,
+      "terminal": -2793.0431940513226,
+      "total": -3809.06072956551
+    }
+  },
+  {
+    "episode": 99,
+    "reward": -260457.97715167055,
+    "final_mass": 948.4875949056727,
+    "energy": 1076.439320552118,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -12.450596526524691,
+      "energy": -1.8470794078565822,
+      "safety": -1000.0,
+      "terminal": -1585.4627847170182,
+      "total": -2599.7604606513996
+    }
+  },
+  {
+    "episode": 100,
+    "reward": -262972.3424315189,
+    "final_mass": 1538.0659130858799,
+    "energy": 1395.2418231799754,
+    "safety_violations": 259,
+    "safe_episode": false,
+    "reward_breakdown": {
+      "production": -0.22856804819321042,
+      "energy": -1.7249999999999999,
+      "safety": -1000.0,
+      "terminal": -3354.1977392576396,
+      "total": -4356.151307305833
+    }
+  }
+]

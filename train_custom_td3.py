@@ -50,8 +50,10 @@ class CustomRewardScheme:
 
         if current_mass < self.target_mass:
             prod_reward = delta_m_fp * 3.0
+        elif current_mass <= self.upper_mass:
+            prod_reward = 0.0
         else:
-            prod_reward = -delta_m_fp * 0.5
+            prod_reward = -delta_m_fp * 1.0
         reward += prod_reward
         breakdown["production"] = prod_reward
 
@@ -74,7 +76,7 @@ class CustomRewardScheme:
             elif self.target_mass <= current_mass <= self.upper_mass:
                 terminal_reward = 2000.0
             else:
-                terminal_reward = -(current_mass - self.upper_mass) * 4.0
+                terminal_reward = -(current_mass - self.upper_mass) * 3.0
 
         reward += terminal_reward
         breakdown["terminal"] = terminal_reward
