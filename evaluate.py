@@ -2,12 +2,15 @@
 Evaluation entry for the thickener dewatering RL experiments.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
 import sys
 
 import numpy as np
+import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -26,6 +29,7 @@ def parse_args():
     parser.add_argument("--algo", type=str, default="esac", choices=["esac", "td3"], help="Algorithm")
     parser.add_argument("--target", type=float, default=400.0, help="Target dry mass")
     parser.add_argument("--steps", type=int, default=DEFAULT_CONTROL_STEPS, help="Decision steps per episode")
+    parser.add_argument("--mode", type=str, default="CC", choices=["DD", "CD", "CC"], help="Physical action mode")
     parser.add_argument(
         "--interval",
         type=int,
@@ -41,7 +45,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def evaluate_single(agent, env, seed=0, verbose=False, save_plot=False):
+def evaluate_single(agent, env, seed=0, verbose=False, save_plot=False, adapt_fn=None):
     state, _ = env.reset(seed=seed)
     done = False
     episode_reward = 0.0
@@ -52,7 +56,10 @@ def evaluate_single(agent, env, seed=0, verbose=False, save_plot=False):
     info_list = []
 
     while not done:
-        action = agent.select_action(state, deterministic=True)
+        if adapt_fn is not None:
+            action = adapt_fn(state, deterministic=True)
+        else:
+            action = agent.select_action(state, deterministic=True)
         next_state, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
 
@@ -91,6 +98,81 @@ def evaluate_single(agent, env, seed=0, verbose=False, save_plot=False):
     return metrics
 
 
+def build_agent_and_adapter(args, env):
+    if args.algo == "esac":
+        if args.mode != "CC":
+            raise ValueError("ESAC evaluation currently only supports true CC mode.")
+
+        checkpoint = torch.load(args.checkpoint, map_location=args.device, weights_only=False)
+        first_actor_key = checkpoint.get("actor_0", None)
+        if first_actor_key is not None:
+            ckpt_state_dim = first_actor_key["fc1.weight"].shape[1]
+        else:
+            ckpt_state_dim = env.observation_space.shape[0]
+
+        from algorithms.esac import ESACAgent
+
+        agent = ESACAgent(
+            state_dim=ckpt_state_dim,
+            action_dim=env.action_space.shape[0],
+            device=args.device,
+        )
+
+        env_state_dim = env.observation_space.shape[0]
+        needs_adapt = ckpt_state_dim != env_state_dim
+        if needs_adapt:
+            print(f"Warning: checkpoint state_dim={ckpt_state_dim}, env state_dim={env_state_dim}")
+            print(f"  Using first {ckpt_state_dim} dimensions of observation for evaluation.")
+
+        def select_action_adapted(state, deterministic=True):
+            return agent.select_action(state[:ckpt_state_dim], deterministic=deterministic)
+
+        return agent, needs_adapt, select_action_adapted
+
+    if args.mode == "DD":
+        from algorithms.discrete_ddqn import DiscreteDDQNAgent
+
+        agent = DiscreteDDQNAgent(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            device=args.device,
+        )
+        return agent, False, None
+
+    if args.mode == "CD":
+        from algorithms.hybrid_td3 import HybridTD3Agent
+
+        agent = HybridTD3Agent(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            device=args.device,
+        )
+        return agent, False, None
+
+    checkpoint = torch.load(args.checkpoint, map_location=args.device, weights_only=False)
+    ckpt_state_dim = env.observation_space.shape[0]
+    actor_key = checkpoint.get("actor", None)
+    if actor_key is not None and "net.0.weight" in actor_key:
+        ckpt_state_dim = actor_key["net.0.weight"].shape[1]
+
+    agent = TD3Agent(
+        state_dim=ckpt_state_dim,
+        action_dim=env.action_space.shape[0],
+        device=args.device,
+    )
+
+    env_state_dim = env.observation_space.shape[0]
+    needs_adapt = ckpt_state_dim != env_state_dim
+    if needs_adapt:
+        print(f"Warning: checkpoint state_dim={ckpt_state_dim}, env state_dim={env_state_dim}")
+        print(f"  Using first {ckpt_state_dim} dimensions of observation for evaluation.")
+
+    def select_action_adapted(state, deterministic=True):
+        return agent.select_action(state[:ckpt_state_dim], deterministic=deterministic)
+
+    return agent, needs_adapt, select_action_adapted
+
+
 def main():
     args = parse_args()
 
@@ -99,32 +181,19 @@ def main():
         max_steps=args.steps,
         decision_interval=args.interval,
         target_mass=args.target,
+        mode=args.mode,
         pricing=PricingPresets.daily_24h(),
         reward_config=reward_config,
     )
 
-    if args.algo == "esac":
-        from algorithms.esac import ESACAgent
-
-        agent = ESACAgent(
-            state_dim=env.observation_space.shape[0],
-            action_dim=env.action_space.shape[0],
-            device=args.device,
-        )
-    else:
-        agent = TD3Agent(
-            state_dim=env.observation_space.shape[0],
-            action_dim=env.action_space.shape[0],
-            device=args.device,
-        )
-
+    agent, needs_adapt, select_action_adapted = build_agent_and_adapter(args, env)
     if not agent.load(args.checkpoint):
         print("Failed to load checkpoint.")
         return
 
     print(f"\nEvaluating: {args.checkpoint} (algo={args.algo})")
     print(
-        f"Target={args.target} t | steps={args.steps} | "
+        f"Target={args.target} t | mode={args.mode} | steps={args.steps} | "
         f"seeds={args.seed_start}~{args.seed_start + args.seeds - 1}"
     )
 
@@ -137,6 +206,7 @@ def main():
             seed=seed,
             verbose=args.verbose,
             save_plot=args.save_plots or (i < 2),
+            adapt_fn=select_action_adapted if needs_adapt else None,
         )
         if metrics:
             all_metrics.append(metrics)
@@ -167,6 +237,7 @@ def main():
     eval_result = {
         "checkpoint": args.checkpoint,
         "target": args.target,
+        "mode": args.mode,
         "steps": args.steps,
         "seeds": f"{args.seed_start}~{args.seed_start + args.seeds - 1}",
         "n_samples": len(all_metrics),

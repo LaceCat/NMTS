@@ -34,12 +34,14 @@ from .reward.pricing import ElectricityPricing, PricingPresets
 
 class ThickenerDewateringEnv(gym.Env):
     metadata = {"render_modes": ["human"]}
+    VALID_ACTION_MODES = ("DD", "CD", "CC")
 
     def __init__(
         self,
         max_steps: int = DEFAULT_CONTROL_STEPS,
         decision_interval: int = 5,
         target_mass: float = 400.0,
+        mode: str = "CC",
         pricing: Optional[ElectricityPricing] = None,
         reward_config: Optional[RewardConfig] = None,
         feed_volatility: str = "normal",
@@ -54,6 +56,9 @@ class ThickenerDewateringEnv(gym.Env):
         self.total_minutes = int(total_minutes)
         self.startup_minutes = int(startup_minutes)
         self.available_control_minutes = self.total_minutes
+        self.mode = str(mode).upper()
+        if self.mode not in self.VALID_ACTION_MODES:
+            raise ValueError(f"Unsupported action mode: {mode}. Expected one of {self.VALID_ACTION_MODES}.")
 
         self.thickener = ThickenerModel()
         self.buffer_press = BufferPressModel()
@@ -74,6 +79,7 @@ class ThickenerDewateringEnv(gym.Env):
             shape=(2,),
             dtype=np.float32,
         )
+        self.physical_action_space = self._build_physical_action_space()
 
         self.observation_space = spaces.Box(
             low=0, high=np.inf, shape=(15,), dtype=np.float32
@@ -87,7 +93,7 @@ class ThickenerDewateringEnv(gym.Env):
         self.Q_fp = 0.0
         self.Qf = 40.0
         self.Cf = 0.35
-        self.thickener_state = np.ones_like(DEFAULT_THICKENER_STATE, dtype=np.float64) * 1e6
+        self.thickener_state = DEFAULT_THICKENER_STATE.copy()
         self.v_buf = 0.0
         self.m_fp = 0.0
         self.c_aver = 0.0
@@ -102,8 +108,54 @@ class ThickenerDewateringEnv(gym.Env):
         self.prev_v_buf = 0.0
         self.prev_c_aver = 0.0
         self.prev_m_fp = 0.0
-        self.last_c_uf = 0.0
+        self.last_c_uf = float(self.thickener.d2c(DEFAULT_THICKENER_STATE[-1] / 1e6))
         self.action_history = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
+        self.last_raw_action = np.zeros(2, dtype=np.float32)
+
+    def _build_physical_action_space(self):
+        if self.mode == "DD":
+            return spaces.MultiDiscrete([2, 2])
+        if self.mode == "CD":
+            return spaces.Tuple(
+                (
+                    spaces.Box(
+                        low=np.array([0.0], dtype=np.float32),
+                        high=np.array([50.0], dtype=np.float32),
+                        shape=(1,),
+                        dtype=np.float32,
+                    ),
+                    spaces.Discrete(2),
+                )
+            )
+        return spaces.Box(
+            low=np.array([0.0, 0.0], dtype=np.float32),
+            high=np.array([50.0, 70.0], dtype=np.float32),
+            shape=(2,),
+            dtype=np.float32,
+        )
+
+    @staticmethod
+    def _discrete_on_off(value: float, on_value: float) -> float:
+        if -0.5 <= value <= 1.5:
+            return float(on_value if int(round(value)) > 0 else 0.0)
+        return float(on_value if value >= (on_value / 2.0) else 0.0)
+
+    def _resolve_physical_action(self, action: np.ndarray) -> np.ndarray:
+        arr = np.asarray(action, dtype=np.float32).reshape(-1)
+        if arr.size != 2:
+            raise ValueError(f"Expected 2 action values, got shape {np.asarray(action).shape}")
+
+        if self.mode == "DD":
+            q_uf = self._discrete_on_off(float(arr[0]), 50.0)
+            q_fp = self._discrete_on_off(float(arr[1]), 70.0)
+        elif self.mode == "CD":
+            q_uf = float(np.clip(arr[0], 0.0, 50.0))
+            q_fp = self._discrete_on_off(float(arr[1]), 70.0)
+        else:
+            q_uf = float(np.clip(arr[0], 0.0, 50.0))
+            q_fp = float(np.clip(arr[1], 0.0, 70.0))
+
+        return np.array([q_uf, q_fp], dtype=np.float32)
 
     def _sample_feed_conditions(self):
         if self.feed_volatility == "high":
@@ -134,32 +186,11 @@ class ThickenerDewateringEnv(gym.Env):
         self._init_state()
         self._sample_feed_conditions()
 
-        warmup_limit = max(int(self.startup_minutes), 1)
-        target_c_uf = 0.66
-        baseline_Q_uf = 20.0
-
-        # Physical cold start: the thickener is initially filled with pure water.
-        self.thickener_state = np.ones(10, dtype=np.float64) * 1e6
-        self.last_c_uf = 0.0
-        self.timecnt = 0
-
-        warmup_used = 0
-        while self.last_c_uf < target_c_uf and warmup_used < warmup_limit:
-            c_uf_floor, self.thickener_state = self.thickener.step(
-                baseline_Q_uf, self.Qf, self.Cf, self.thickener_state
-            )
-            self.last_c_uf = float(c_uf_floor[-1])
-            warmup_used += 1
-
-        if self.last_c_uf < target_c_uf:
-            raise RuntimeError(
-                f"Warm-up failed to reach c_uf={target_c_uf:.2f} within {warmup_limit} minutes; "
-                f"last_c_uf={self.last_c_uf:.4f}, Qf={self.Qf:.3f}, Cf={self.Cf:.4f}"
-            )
-
-        self.Q_uf = baseline_Q_uf
+        self.thickener_state = DEFAULT_THICKENER_STATE.copy()
+        self.last_c_uf = float(self.thickener.d2c(self.thickener_state[-1] / 1e6))
+        self.Q_uf = 0.0
         self.Q_fp = 0.0
-        self.prev_q_uf = baseline_Q_uf
+        self.prev_q_uf = 0.0
         self.prev_q_fp = 0.0
         self.timecnt = 0
         self.policy_stepcnt = 0
@@ -171,8 +202,9 @@ class ThickenerDewateringEnv(gym.Env):
         self.prev_m_fp = 0.0
         self.energy_cost_sum = 0.0
         self.target_reached = False
-        self.action_history = [(baseline_Q_uf, 0.0)] * 3
-        self.warmup_minutes_used = warmup_used
+        self.action_history = [(0.0, 0.0)] * 3
+        self.warmup_minutes_used = 0
+        self.last_raw_action = np.zeros(2, dtype=np.float32)
 
         c_uf = self.last_c_uf
         mass_buf = (self.c_aver * self.v_buf * self.thickener.c2d(self.c_aver)
@@ -181,8 +213,10 @@ class ThickenerDewateringEnv(gym.Env):
         return obs, {}
 
     def step(self, action: np.ndarray):
-        self.Q_uf = float(np.clip(action[0], 0.0, 50.0))
-        self.Q_fp = float(np.clip(action[1], 0.0, 70.0))
+        self.last_raw_action = np.asarray(action, dtype=np.float32).reshape(-1).copy()
+        physical_action = self._resolve_physical_action(self.last_raw_action)
+        self.Q_uf = float(physical_action[0])
+        self.Q_fp = float(physical_action[1])
         self.action_history.pop(0)
         self.action_history.append((self.Q_uf, self.Q_fp))
 
@@ -271,6 +305,11 @@ class ThickenerDewateringEnv(gym.Env):
             done = True
 
         info = {
+            "action_mode": self.mode,
+            "raw_action_q_uf": float(self.last_raw_action[0]),
+            "raw_action_q_fp": float(self.last_raw_action[1]),
+            "applied_q_uf": float(self.Q_uf),
+            "applied_q_fp": float(self.Q_fp),
             "total_energy_cost": self.energy_cost_sum,
             "energy_cost_step": total_energy_cost,
             "current_mass": self.m_fp,
@@ -290,7 +329,7 @@ class ThickenerDewateringEnv(gym.Env):
         if self.verbose:
             bd_str = ", ".join(f"{k}={v:+.1f}" for k, v in breakdown.items() if k != 'total')
             print(
-                f"Step {self.policy_stepcnt:4d} | action=[{self.Q_uf:.1f},{self.Q_fp:.1f}] "
+                f"Step {self.policy_stepcnt:4d} | mode={self.mode} | action=[{self.Q_uf:.1f},{self.Q_fp:.1f}] "
                 f"| r={total_reward:+7.1f} | m={self.m_fp:6.1f} "
                 f"| c_uf={final_c_uf:.4f} v_buf={self.v_buf:.2f} "
                 f"| energy={total_energy_cost:.2f} | violations={safety_violations} | {bd_str}"

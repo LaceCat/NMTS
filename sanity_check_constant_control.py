@@ -22,6 +22,7 @@ def parse_args():
     parser.add_argument("--q_fp", type=float, default=35.0, help="Constant filter press pump action")
     parser.add_argument("--steps", type=int, default=DEFAULT_CONTROL_STEPS, help="Decision steps to simulate")
     parser.add_argument("--interval", type=int, default=DEFAULT_DECISION_INTERVAL, help="Minutes per decision step")
+    parser.add_argument("--mode", type=str, default="CC", choices=["DD", "CD", "CC"], help="Physical action mode")
     parser.add_argument("--target", type=float, default=400.0, help="Target mass used by env config")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
@@ -50,6 +51,7 @@ def main():
         max_steps=args.steps,
         decision_interval=args.interval,
         target_mass=args.target,
+        mode=args.mode,
         pricing=PricingPresets.daily_24h(),
         reward_config=reward_config,
         verbose=False,
@@ -117,7 +119,7 @@ def main():
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-    fig.suptitle(f"Constant Control Sanity Check | Q_uf={args.q_uf}, Q_fp={args.q_fp}")
+    fig.suptitle(f"Constant Control Sanity Check | mode={args.mode} | Q_uf={args.q_uf}, Q_fp={args.q_fp}")
 
     axes[0, 0].plot(steps, masses, color="#1f77b4")
     axes[0, 0].set_title("Cumulative Dry Mass")

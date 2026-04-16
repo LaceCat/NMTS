@@ -38,6 +38,7 @@ def parse_args():
     parser.add_argument("--target", type=float, default=400.0, help="Target dry mass in tons")
     parser.add_argument("--steps", type=int, default=DEFAULT_CONTROL_STEPS, help="Decision steps per episode")
     parser.add_argument("--interval", type=int, default=DEFAULT_DECISION_INTERVAL, help="Physical minutes per decision step")
+    parser.add_argument("--mode", type=str, default="CC", choices=["DD", "CD", "CC"], help="Physical action mode")
 
     parser.add_argument("--epochs", type=int, default=1000, help="Number of training epochs")
     parser.add_argument("--episodes_per_epoch", type=int, default=5, help="Episodes per epoch")
@@ -134,7 +135,7 @@ def _format_target(value: float) -> str:
 def _build_default_run_name(args) -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return (
-        f"{args.algo}_target{_format_target(args.target)}"
+        f"{args.algo}_{args.mode.lower()}_target{_format_target(args.target)}"
         f"_steps{args.steps}_int{args.interval}_seed{args.seed}_{timestamp}"
     )
 
@@ -232,6 +233,7 @@ def _write_run_config(path: Path, args, paths: dict):
         "target": args.target,
         "steps": args.steps,
         "interval": args.interval,
+        "mode": args.mode,
         "epochs": args.epochs,
         "episodes_per_epoch": args.episodes_per_epoch,
         "seed": args.seed,
@@ -556,6 +558,8 @@ def _apply_stage_transition_tuning(agent, stage: dict):
 
 def _build_agent(args, state_dim: int, action_dim: int):
     if args.algo == "esac":
+        if args.mode != "CC":
+            raise ValueError("ESAC currently only supports true CC mode. Use TD3-family baselines for DD/CD.")
         from algorithms.esac import ESACAgent
 
         buffer_cap = args.buffer_capacity if args.buffer_capacity > 0 else 4000
@@ -577,24 +581,53 @@ def _build_agent(args, state_dim: int, action_dim: int):
         )
         algo_name = f"ESAC (N={args.num_actors})"
     else:
-        from algorithms.td3 import TD3Agent
-
         buffer_cap = args.buffer_capacity if args.buffer_capacity > 0 else 1_000_000
         batch = args.batch_size if args.batch_size > 0 else 256
         lr_a = args.lr_actor if args.lr_actor > 0 else 1e-4
         lr_c = args.lr_critic if args.lr_critic > 0 else 1e-3
 
-        agent = TD3Agent(
-            state_dim=state_dim,
-            action_dim=action_dim,
-            buffer_capacity=buffer_cap,
-            batch_size=batch,
-            hidden_dim=args.hidden_dim,
-            lr_actor=lr_a,
-            lr_critic=lr_c,
-            device=args.device,
-        )
-        algo_name = "TD3"
+        if args.mode == "DD":
+            from algorithms.discrete_ddqn import DiscreteDDQNAgent
+
+            agent = DiscreteDDQNAgent(
+                state_dim=state_dim,
+                action_dim=action_dim,
+                buffer_capacity=buffer_cap,
+                batch_size=batch,
+                hidden_dim=args.hidden_dim,
+                lr_actor=lr_c,
+                lr_critic=lr_c,
+                device=args.device,
+            )
+            algo_name = "Discrete DDQN (DD)"
+        elif args.mode == "CD":
+            from algorithms.hybrid_td3 import HybridTD3Agent
+
+            agent = HybridTD3Agent(
+                state_dim=state_dim,
+                action_dim=action_dim,
+                buffer_capacity=buffer_cap,
+                batch_size=batch,
+                hidden_dim=args.hidden_dim,
+                lr_actor=lr_a,
+                lr_critic=lr_c,
+                device=args.device,
+            )
+            algo_name = "Hybrid TD3 (CD)"
+        else:
+            from algorithms.td3 import TD3Agent
+
+            agent = TD3Agent(
+                state_dim=state_dim,
+                action_dim=action_dim,
+                buffer_capacity=buffer_cap,
+                batch_size=batch,
+                hidden_dim=args.hidden_dim,
+                lr_actor=lr_a,
+                lr_critic=lr_c,
+                device=args.device,
+            )
+            algo_name = "TD3 (CC)"
 
     return agent, algo_name
 
@@ -615,6 +648,7 @@ def train():
         max_steps=args.steps,
         decision_interval=args.interval,
         target_mass=args.target,
+        mode=args.mode,
         pricing=PricingPresets.daily_24h(),
         reward_config=reward_config,
     )
@@ -638,6 +672,7 @@ def train():
     logger.info(f"Target dry mass: {args.target} t")
     logger.info(f"Decision steps: {args.steps}")
     logger.info(f"Decision interval: {args.interval} min")
+    logger.info(f"Action mode: {args.mode}")
     logger.info(f"Pass band: {reward_config.target_mass_low:.1f} ~ {reward_config.target_mass_high:.1f} t")
     if args.curriculum == "none":
         logger.info("Curriculum: none")
