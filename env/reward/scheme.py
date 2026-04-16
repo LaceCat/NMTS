@@ -1,9 +1,11 @@
 """
 Reward computation for the thickener dewatering environment.
 
-Key idea:
-reward the controller for moving toward the 400 t target,
-and penalize it for continuing to produce after the target has been crossed.
+Simplified four-part reward:
+1. Safety is absolute.
+2. Production is rewarded only before the target band.
+3. Energy is a secondary running cost.
+4. Final success is judged mainly at the episode end.
 """
 
 from __future__ import annotations
@@ -52,46 +54,41 @@ class RewardScheme:
         rc = self.config
         done = False
 
-        target_gap_reward = 0.0
-        overshoot_penalty = 0.0
-        schedule_penalty = 0.0
-        target_cross_reward = 0.0
-        throughput_reward = 0.0
-        band_hold_reward = 0.0
+        production_reward = 0.0
+        productive_delta = 0.0
+        glide_delta = 0.0
+        excess_delta = 0.0
 
-        # 1) Curriculum-aware mass objective:
-        # Stage 1 can disable hard production targets and focus on safe operation.
+        # 1) Production shaping:
+        # before target -> reward each extra ton;
+        # inside target band -> no extra push;
+        # above target band -> only mild negative feedback.
         if rc.enable_target_objective:
-            prev_gap = abs(rc.target_mass - prev_m_fp)
-            curr_gap = abs(rc.target_mass - m_fp)
-            target_gap_reward = rc.target_gap_improvement_weight * (prev_gap - curr_gap)
+            glide_start = max(rc.target_mass - rc.pre_target_glide_margin, 0.0)
+            target_capped_prev = min(prev_m_fp, rc.target_mass)
+            target_capped_curr = min(m_fp, rc.target_mass)
 
-            prev_overshoot = max(prev_m_fp - rc.target_mass, 0.0)
-            curr_overshoot = max(m_fp - rc.target_mass, 0.0)
-            overshoot_delta = max(curr_overshoot - prev_overshoot, 0.0)
-            overshoot_penalty = (
-                -rc.overshoot_delta_penalty_weight * overshoot_delta
-                -rc.overshoot_inventory_penalty_weight * (curr_overshoot / rc.target_mass)
+            below_glide_prev = min(target_capped_prev, glide_start)
+            below_glide_curr = min(target_capped_curr, glide_start)
+            productive_delta = max(below_glide_curr - below_glide_prev, 0.0)
+
+            glide_prev = np.clip(target_capped_prev, glide_start, rc.target_mass)
+            glide_curr = np.clip(target_capped_curr, glide_start, rc.target_mass)
+            glide_delta = max(glide_curr - glide_prev, 0.0)
+
+            above_target_prev = max(prev_m_fp - rc.target_mass, 0.0)
+            above_target_curr = max(m_fp - rc.target_mass, 0.0)
+            excess_delta = max(above_target_curr - above_target_prev, 0.0)
+            production_reward = (
+                rc.throughput_reward_weight * productive_delta
+                + rc.throughput_reward_weight * rc.pre_target_glide_scale * glide_delta
+                - rc.post_target_delta_penalty_weight * excess_delta
             )
-
-            target_progress = rc.target_mass * min((episode_step + 1) / max_steps, 1.0)
-            schedule_slack = rc.target_mass * rc.schedule_tolerance_ratio
-            behind_gap = max(target_progress - schedule_slack - m_fp, 0.0)
-            ahead_gap = max(m_fp - target_progress - schedule_slack, 0.0)
-            schedule_penalty = (
-                -rc.schedule_behind_weight * behind_gap / rc.target_mass
-                -rc.schedule_ahead_weight * ahead_gap / rc.target_mass
-            )
-
-            if (not target_reached) and prev_m_fp < rc.target_mass <= m_fp:
-                target_cross_reward = rc.target_cross_bonus
-
-            if rc.target_mass_low <= m_fp <= rc.target_mass_high:
-                band_hold_reward = rc.in_band_step_bonus
         else:
-            throughput_reward = rc.throughput_reward_weight * max(delta_m_fp, 0.0)
+            productive_delta = max(delta_m_fp, 0.0)
+            production_reward = rc.throughput_reward_weight * productive_delta
 
-        # 2) Energy is important, but secondary to safety and feasible production.
+        # 2) Energy is important, but still secondary to safety and end-of-day success.
         energy_reward = -rc.energy_cost_weight * energy_cost
 
         # 3) Safety remains a hard preference in the reward.
@@ -99,7 +96,9 @@ class RewardScheme:
         buf_unsafe = v_buf > rc.buffer_vol_hard_limit
         unsafe_now = bool(safety_violations > 0 or uf_unsafe or buf_unsafe)
 
-        safety_penalty = -rc.safety_violation_penalty * float(safety_violations)
+        safety_penalty = 0.0
+        if unsafe_now:
+            safety_penalty -= rc.safety_violation_penalty * float(max(safety_violations, 1))
         if uf_unsafe:
             exceed = max(c_uf - rc.uf_conc_hard_limit, 0.0)
             safety_penalty -= rc.uf_conc_penalty * (1.0 + 10.0 * exceed)
@@ -107,73 +106,58 @@ class RewardScheme:
             exceed = max(v_buf - rc.buffer_vol_hard_limit, 0.0)
             safety_penalty -= rc.buffer_vol_penalty * (1.0 + exceed / max(rc.buffer_vol_hard_limit, 1.0))
 
-        # On unsafe steps, do not grant positive progress/target bonuses.
+        # On unsafe steps, do not grant positive production reward.
         if rc.unsafe_step_reward_block and unsafe_now:
-            target_gap_reward = min(target_gap_reward, 0.0)
-            target_cross_reward = 0.0
-            throughput_reward = min(throughput_reward, 0.0)
-            band_hold_reward = 0.0
+            production_reward = min(production_reward, 0.0)
 
-        # 4) Smooth actions to suppress chattering.
-        smooth_penalty = 0.0
-        if episode_step > 0:
-            du = abs(q_uf - prev_q_uf) / 50.0
-            df = abs(q_fp - prev_q_fp) / 70.0
-            smooth_penalty = -rc.smoothness_weight * (du + df)
-
-        # 5) Terminal objective:
-        # Stage 1 can skip mass targets, while later stages use progressively tighter bands.
+        # 4) Terminal objective:
+        # final judgement is dominated by whether the episode lands inside the target band.
         terminal_reward = 0.0
         is_final_step = episode_step >= max_steps - 1
         if is_final_step:
             done = True
             if rc.enable_target_objective:
                 deficit = max(rc.target_mass - m_fp, 0.0)
-                overshoot = max(m_fp - rc.target_mass, 0.0)
+                overshoot = max(m_fp - rc.target_mass_high, 0.0)
 
                 if deficit > 0.0:
                     terminal_reward = (
                         -rc.terminal_under_penalty_weight * deficit
                         -rc.terminal_under_penalty_quadratic * deficit ** 2
                     )
-                elif overshoot <= rc.target_band_tolerance:
-                    terminal_reward = rc.terminal_target_band_bonus - 2.0 * overshoot
+                elif overshoot <= 0.0:
+                    terminal_reward = rc.terminal_target_band_bonus
                 else:
-                    excess = overshoot - rc.target_band_tolerance
                     terminal_reward = (
-                        rc.terminal_target_band_bonus
-                        - 2.0 * rc.target_band_tolerance
-                        - rc.terminal_over_penalty_weight * excess
-                        - rc.terminal_over_penalty_quadratic * excess ** 2
+                        -rc.terminal_over_penalty_weight * overshoot
+                        -rc.terminal_over_penalty_quadratic * overshoot ** 2
                     )
 
             if unsafe_now:
                 terminal_reward -= rc.terminal_safety_block_penalty
 
         total_reward = (
-            target_gap_reward
-            + overshoot_penalty
-            + schedule_penalty
-            + target_cross_reward
-            + throughput_reward
-            + band_hold_reward
+            production_reward
             + energy_reward
             + safety_penalty
-            + smooth_penalty
             + terminal_reward
         )
         total_reward = float(np.clip(total_reward, rc.reward_clip_min, rc.reward_clip_max))
 
         breakdown = {
-            "target_gap": float(target_gap_reward),
-            "overshoot": float(overshoot_penalty),
-            "schedule": float(schedule_penalty),
-            "target_cross": float(target_cross_reward),
-            "throughput": float(throughput_reward),
-            "band_hold": float(band_hold_reward),
+            "production": float(production_reward),
+            "productive_delta": float(productive_delta),
+            "glide_delta": float(glide_delta),
+            "excess_delta": float(excess_delta),
+            "target_gap": 0.0,
+            "overshoot": float(-rc.post_target_delta_penalty_weight * excess_delta),
+            "schedule": 0.0,
+            "target_cross": 0.0,
+            "throughput": float(production_reward),
+            "band_hold": 0.0,
             "energy": float(energy_reward),
             "safety": float(safety_penalty),
-            "smooth": float(smooth_penalty),
+            "smooth": 0.0,
             "terminal": float(terminal_reward),
             "total": total_reward,
         }

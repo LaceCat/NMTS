@@ -436,48 +436,51 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
 
     if stage["name"] == "stage1":
         config.enable_target_objective = False
-        config.throughput_reward_weight = 0.05
-        config.energy_cost_weight = 0.10
-        config.smoothness_weight = 0.20
-        config.uf_conc_penalty = 140.0
-        config.buffer_vol_penalty = 140.0
-        config.safety_violation_penalty = 40.0
-        config.terminal_safety_block_penalty = 400.0
-        config.reward_clip_min = -1500.0
-        config.reward_clip_max = 150.0
+        config.throughput_reward_weight = 0.10
+        config.post_target_delta_penalty_weight = 0.0
+        config.pre_target_glide_margin = 180.0
+        config.pre_target_glide_scale = 0.05
+        config.energy_cost_weight = 0.20
+        config.uf_conc_penalty = 400.0
+        config.buffer_vol_penalty = 400.0
+        config.safety_violation_penalty = 1000.0
+        config.terminal_safety_block_penalty = 1200.0
+        config.reward_clip_min = -5000.0
+        config.reward_clip_max = 2500.0
     elif stage["name"] == "stage2":
-        config.target_gap_improvement_weight = 1.2
-        config.overshoot_delta_penalty_weight = 10.0
-        config.overshoot_inventory_penalty_weight = 20.0
-        config.target_cross_bonus = 15.0
-        config.in_band_step_bonus = 2.0
-        config.schedule_behind_weight = 0.4
-        config.schedule_ahead_weight = 8.0
-        config.energy_cost_weight = 0.25
-        config.smoothness_weight = 0.25
-        config.terminal_target_band_bonus = 260.0
-        config.terminal_under_penalty_weight = 4.0
-        config.terminal_under_penalty_quadratic = 0.02
-        config.terminal_over_penalty_weight = 16.0
-        config.terminal_over_penalty_quadratic = 0.10
+        config.throughput_reward_weight = 1.0
+        config.post_target_delta_penalty_weight = 4.0
+        config.pre_target_glide_margin = 160.0
+        config.pre_target_glide_scale = 0.10
+        config.energy_cost_weight = 0.40
+        config.uf_conc_penalty = 350.0
+        config.buffer_vol_penalty = 350.0
+        config.safety_violation_penalty = 1000.0
+        config.terminal_safety_block_penalty = 1200.0
+        config.terminal_target_band_bonus = 2000.0
+        config.terminal_under_penalty_weight = 12.0
+        config.terminal_under_penalty_quadratic = 0.0
+        config.terminal_over_penalty_weight = 10.0
+        config.terminal_over_penalty_quadratic = 0.0
+        config.reward_clip_min = -5000.0
+        config.reward_clip_max = 2500.0
     else:
-        config.target_gap_improvement_weight = 1.0
-        config.overshoot_delta_penalty_weight = 20.0
-        config.overshoot_inventory_penalty_weight = 40.0
-        config.target_cross_bonus = 5.0
-        config.in_band_step_bonus = 4.0
-        config.schedule_behind_weight = 0.6
-        config.schedule_ahead_weight = 14.0
-        config.energy_cost_weight = 0.30
-        config.smoothness_weight = 0.35
-        config.uf_conc_penalty = 120.0
-        config.buffer_vol_penalty = 120.0
-        config.safety_violation_penalty = 40.0
-        config.terminal_target_band_bonus = 360.0
-        config.terminal_under_penalty_weight = 5.0
-        config.terminal_under_penalty_quadratic = 0.03
-        config.terminal_over_penalty_weight = 28.0
-        config.terminal_over_penalty_quadratic = 0.25
+        config.throughput_reward_weight = 0.8
+        config.post_target_delta_penalty_weight = 8.0
+        config.pre_target_glide_margin = 180.0
+        config.pre_target_glide_scale = 0.05
+        config.energy_cost_weight = 0.40
+        config.uf_conc_penalty = 400.0
+        config.buffer_vol_penalty = 400.0
+        config.safety_violation_penalty = 1000.0
+        config.terminal_safety_block_penalty = 1500.0
+        config.terminal_target_band_bonus = 2600.0
+        config.terminal_under_penalty_weight = 15.0
+        config.terminal_under_penalty_quadratic = 0.0
+        config.terminal_over_penalty_weight = 16.0
+        config.terminal_over_penalty_quadratic = 0.0
+        config.reward_clip_min = -5000.0
+        config.reward_clip_max = 2500.0
 
     return config
 
@@ -552,6 +555,42 @@ def _apply_stage_transition_tuning(agent, stage: dict):
         agent.noise_clip_np = agent.noise_clip_np * 0.5
         agent.noise_clip = torch.tensor(agent.noise_clip_np, dtype=torch.float32, device=agent.device)
         updates["noise_clip_scale"] = 0.5
+
+    return updates
+
+
+def _decay_agent_exploration(agent, factor: float = 0.93):
+    updates = {}
+
+    if hasattr(agent, "exploration_noise_np"):
+        if hasattr(agent, "action_range_np"):
+            floor = np.asarray(agent.action_range_np, dtype=np.float32) * 0.02
+        elif hasattr(agent, "q_uf_high") and hasattr(agent, "q_uf_low"):
+            floor = np.asarray([float(agent.q_uf_high) - float(agent.q_uf_low)], dtype=np.float32) * 0.02
+        else:
+            floor = np.asarray(agent.exploration_noise_np, dtype=np.float32) * 0.25
+
+        new_noise = np.maximum(np.asarray(agent.exploration_noise_np, dtype=np.float32) * factor, floor)
+        agent.exploration_noise_np = new_noise.astype(np.float32)
+        updates["exploration_noise"] = agent.exploration_noise_np.tolist()
+
+    if hasattr(agent, "policy_noise_np") and hasattr(agent, "policy_noise"):
+        base = np.asarray(agent.policy_noise_np, dtype=np.float32)
+        floor = np.maximum(base * 0.25, 1e-3)
+        agent.policy_noise_np = np.maximum(base * factor, floor).astype(np.float32)
+        agent.policy_noise = torch.tensor(agent.policy_noise_np, dtype=torch.float32, device=agent.device)
+        updates["policy_noise"] = agent.policy_noise_np.tolist()
+
+    if hasattr(agent, "noise_clip_np") and hasattr(agent, "noise_clip"):
+        base = np.asarray(agent.noise_clip_np, dtype=np.float32)
+        floor = np.maximum(base * 0.25, 1e-3)
+        agent.noise_clip_np = np.maximum(base * factor, floor).astype(np.float32)
+        agent.noise_clip = torch.tensor(agent.noise_clip_np, dtype=torch.float32, device=agent.device)
+        updates["noise_clip"] = agent.noise_clip_np.tolist()
+
+    if hasattr(agent, "discrete_exploration_prob"):
+        agent.discrete_exploration_prob = max(float(agent.discrete_exploration_prob) * factor, 0.02)
+        updates["discrete_exploration_prob"] = float(agent.discrete_exploration_prob)
 
     return updates
 
@@ -896,6 +935,14 @@ def train():
                 f"{'*BEST*' if is_best else '      '} | "
                 f"ETA {_fmt_timedelta(eta_seconds)}"
             )
+
+            if args.curriculum == "none":
+                noise_updates = _decay_agent_exploration(agent)
+                if noise_updates and epoch < args.epochs:
+                    logger.info(
+                        "Adaptive noise decay | "
+                        + ", ".join(f"{k}={v}" for k, v in noise_updates.items())
+                    )
 
     except KeyboardInterrupt:
         interrupted = True
