@@ -2,6 +2,7 @@
 Replay buffer utilities.
 """
 
+from collections import deque
 from collections import namedtuple
 
 import numpy as np
@@ -84,17 +85,23 @@ class PrioritizedReplayBuffer:
         beta_start: float = 0.4,
         beta_end: float = 1.0,
         beta_frames: int = 100000,
+        n_step: int = 1,
+        gamma: float = 0.99,
     ):
         self.capacity = int(capacity)
         self.alpha = alpha
         self.beta_start = beta_start
         self.beta_end = beta_end
         self.beta_frames = beta_frames
+        self.n_step = max(int(n_step), 1)
+        self.gamma = float(gamma)
         self.frame = 1
 
         self.buffer = []
         self.position = 0
         self.priorities = np.zeros((self.capacity,), dtype=np.float32)
+        self.max_priority = 1.0
+        self.n_step_buffer = deque(maxlen=self.n_step)
 
     def _beta(self, frame_idx: int) -> float:
         return min(
@@ -102,9 +109,8 @@ class PrioritizedReplayBuffer:
             self.beta_start + frame_idx * (self.beta_end - self.beta_start) / self.beta_frames,
         )
 
-    def add(self, state, action, reward, next_state, done):
-        experience = Transition(state, action, reward, next_state, done)
-        priority = max(abs(reward), 1e-6) ** self.alpha
+    def _store_experience(self, experience: Transition):
+        priority = float(self.max_priority)
 
         if len(self.buffer) < self.capacity:
             self.buffer.append(experience)
@@ -114,6 +120,52 @@ class PrioritizedReplayBuffer:
             self.priorities[self.position] = priority
 
         self.position = (self.position + 1) % self.capacity
+
+    def _build_n_step_transition(self):
+        reward = 0.0
+        next_state = self.n_step_buffer[-1].next_state
+        done = self.n_step_buffer[-1].done
+
+        for idx, transition in enumerate(self.n_step_buffer):
+            reward += (self.gamma ** idx) * float(transition.reward)
+            next_state = transition.next_state
+            done = transition.done
+            if done:
+                break
+
+        first = self.n_step_buffer[0]
+        return Transition(
+            np.asarray(first.state, dtype=np.float32),
+            np.asarray(first.action, dtype=np.float32),
+            float(reward),
+            np.asarray(next_state, dtype=np.float32),
+            bool(done),
+        )
+
+    def add(self, state, action, reward, next_state, done):
+        experience = Transition(
+            np.asarray(state, dtype=np.float32),
+            np.asarray(action, dtype=np.float32),
+            float(reward),
+            np.asarray(next_state, dtype=np.float32),
+            bool(done),
+        )
+        self.n_step_buffer.append(experience)
+
+        if len(self.n_step_buffer) < self.n_step and not done:
+            return
+
+        aggregated = self._build_n_step_transition()
+        self._store_experience(aggregated)
+
+        if done:
+            while len(self.n_step_buffer) > 1:
+                self.n_step_buffer.popleft()
+                aggregated = self._build_n_step_transition()
+                self._store_experience(aggregated)
+            self.n_step_buffer.clear()
+        else:
+            self.n_step_buffer.popleft()
 
     def sample(self, batch_size: int, device: str = "cpu"):
         if len(self.buffer) < batch_size:
@@ -147,7 +199,10 @@ class PrioritizedReplayBuffer:
 
     def update_priorities(self, indices, td_errors):
         for idx, error in zip(indices, td_errors):
-            self.priorities[idx] = max(abs(error), 1e-6) ** self.alpha
+            priority = max(abs(float(error)), 1e-6) ** self.alpha
+            self.priorities[idx] = priority
+            if priority > self.max_priority:
+                self.max_priority = float(priority)
 
     @property
     def size(self):

@@ -1,0 +1,4 @@
+2026-04-17 11:24:41 Serial run start | tag=bgscript_test_20260417_1127 | epochs=1 | episodes_per_epoch=1 | device=cpu
+2026-04-17 11:24:41 Starting DD | run_name=dd_gru_serial_bgscript_test_20260417_1127
+2026-04-17 11:24:45 Completed DD | run_name=dd_gru_serial_bgscript_test_20260417_1127
+2026-04-17 11:24:45 Starting CD | run_name=cd_gru_serial_bgscript_test_20260417_1127

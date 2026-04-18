@@ -1,0 +1,29 @@
+2026-04-17 11:24:41 Serial run start | tag=bgscript_test_20260417_1127 | epochs=1 | episodes_per_epoch=1 | device=cpu
+2026-04-17 11:24:41 Starting DD | run_name=dd_gru_serial_bgscript_test_20260417_1127
+11:24:44 [Train] INFO: ========================================================================
+11:24:44 [Train] INFO: Start GRU-Discrete DDQN (DD) training
+11:24:44 [Train] INFO: Target dry mass: 400.0 t
+11:24:44 [Train] INFO: Decision steps: 288
+11:24:44 [Train] INFO: Decision interval: 5 min
+11:24:44 [Train] INFO: Action mode: DD
+11:24:44 [Train] INFO: Pass band: 400.0 ~ 415.0 t
+11:24:44 [Train] INFO: Curriculum: safety_mass | stage1=2 ep (safe only) | stage2=1 ep (safe 400t) | stage3=0 ep (safe 400t + low EEI)
+11:24:44 [Train] INFO: Total physical time: 1440 min = 24.0 h
+11:24:44 [Train] INFO: Device: cpu
+11:24:44 [Train] INFO: Seed: 42
+11:24:44 [Train] INFO: GRU encoder: on
+11:24:44 [Train] INFO: GRU hidden dim: 96
+11:24:44 [Train] INFO: Run root: F:\毕设\claude-code\runs
+11:24:44 [Train] INFO: Run dir: F:\毕设\claude-code\runs\dd_gru_serial_bgscript_test_20260417_1127
+11:24:44 [Train] INFO: GPU: NVIDIA GeForce RTX 5060 Laptop GPU
+11:24:44 [Train] INFO: ========================================================================
+Model saved to F:\毕设\claude-code\runs\dd_gru_serial_bgscript_test_20260417_1127\checkpoints\best_stage1.pth
+Model saved to F:\毕设\claude-code\runs\dd_gru_serial_bgscript_test_20260417_1127\checkpoints\latest.pth
+11:24:44 [Train] INFO: [==============================] 100.0% | S1-SAFE | E    1/1 | Rwd -3669.46 | Mass  675.42/safe | Energy  1570.87 | UnsafeEp 100.0% | UnsafeSt  0.7% | Meet 100.0% | Pass  0.0% | *BEST* | ETA 00:00:00
+Model saved to F:\毕设\claude-code\runs\dd_gru_serial_bgscript_test_20260417_1127\checkpoints\final_model.pth
+训练曲线已保存到 F:\毕设\claude-code\runs\dd_gru_serial_bgscript_test_20260417_1127\plots\training_metrics.png
+11:24:45 [Train] INFO: Training finished. Total time: 00:00:01
+11:24:45 [Train] INFO: Best reward: -3669.46
+11:24:45 [Train] INFO: Artifacts saved in: F:\毕设\claude-code\runs\dd_gru_serial_bgscript_test_20260417_1127
+2026-04-17 11:24:45 Completed DD | run_name=dd_gru_serial_bgscript_test_20260417_1127
+2026-04-17 11:24:45 Starting CD | run_name=cd_gru_serial_bgscript_test_20260417_1127

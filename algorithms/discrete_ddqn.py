@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from utils.networks import GRUQNetwork
 
 STATE_DIM = 9
 NUM_ACTIONS = 4
@@ -111,18 +112,32 @@ class DiscreteDDQNAgent:
         tau: float = TAU,
         lr_actor: float = LR,
         lr_critic: float = LR,
+        use_gru_encoder: bool = False,
+        gru_hidden_dim: int = 96,
         device: str = "cpu",
     ):
         del action_dim, lr_critic
         self.state_dim = state_dim
+        self.hidden_dim = hidden_dim
+        self.use_gru_encoder = bool(use_gru_encoder)
+        self.gru_hidden_dim = int(gru_hidden_dim)
         self.batch_size = batch_size
         self.gamma = gamma
         self.tau = tau
         self.device = device
         self.num_actions = int(self.ACTION_TABLE.shape[0])
 
-        self.q_network = QNetwork(state_dim, self.num_actions, hidden_dim).to(device)
-        self.target_q_network = QNetwork(state_dim, self.num_actions, hidden_dim).to(device)
+        q_cls = GRUQNetwork if self.use_gru_encoder else QNetwork
+        q_kwargs = {
+            "state_dim": state_dim,
+            "num_actions": self.num_actions,
+            "hidden_dim": hidden_dim,
+        }
+        if self.use_gru_encoder:
+            q_kwargs["gru_hidden_dim"] = self.gru_hidden_dim
+
+        self.q_network = q_cls(**q_kwargs).to(device)
+        self.target_q_network = q_cls(**q_kwargs).to(device)
         self.target_q_network.load_state_dict(self.q_network.state_dict())
         for param in self.target_q_network.parameters():
             param.requires_grad = False
@@ -218,6 +233,9 @@ class DiscreteDDQNAgent:
                 "select_step": self.select_step,
                 "update_step": self.update_step,
                 "state_dim": self.state_dim,
+                "hidden_dim": self.hidden_dim,
+                "use_gru_encoder": self.use_gru_encoder,
+                "gru_hidden_dim": self.gru_hidden_dim,
             },
             path,
         )

@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.networks import Actor, Critic
+from utils.networks import Actor, Critic, GRUActor, GRUCritic
 from utils.replay_buffer import ReplayBuffer
 
 
@@ -52,10 +52,17 @@ class TD3Agent:
         noise_clip: float = NOISE_CLIP,
         policy_freq: int = POLICY_FREQ,
         exploration_noise: float = EXPLORATION_NOISE,
+        action_low=None,
+        action_high=None,
+        use_gru_encoder: bool = False,
+        gru_hidden_dim: int = 96,
         device: str = "cpu",
     ):
         self.state_dim = state_dim
         self.action_dim = action_dim
+        self.hidden_dim = hidden_dim
+        self.use_gru_encoder = bool(use_gru_encoder)
+        self.gru_hidden_dim = int(gru_hidden_dim)
         self.batch_size = batch_size
         self.gamma = gamma
         self.tau = tau
@@ -63,8 +70,14 @@ class TD3Agent:
         self.device = device
         self.update_step = 0
 
-        self.action_low_np = ACTION_BOUNDS_LOW.copy()
-        self.action_high_np = ACTION_BOUNDS_HIGH.copy()
+        self.action_low_np = (
+            np.asarray(action_low, dtype=np.float32).copy()
+            if action_low is not None else ACTION_BOUNDS_LOW.copy()
+        )
+        self.action_high_np = (
+            np.asarray(action_high, dtype=np.float32).copy()
+            if action_high is not None else ACTION_BOUNDS_HIGH.copy()
+        )
         self.action_range_np = self.action_high_np - self.action_low_np
 
         self.action_low = torch.tensor(self.action_low_np, dtype=torch.float32, device=device)
@@ -79,14 +92,31 @@ class TD3Agent:
 
         self.buffer = ReplayBuffer(capacity=buffer_capacity)
 
-        self.actor = Actor(state_dim, action_dim, hidden_dim).to(device)
-        self.actor_target = Actor(state_dim, action_dim, hidden_dim).to(device)
+        actor_cls = GRUActor if self.use_gru_encoder else Actor
+        critic_cls = GRUCritic if self.use_gru_encoder else Critic
+
+        actor_kwargs = {
+            "state_dim": state_dim,
+            "action_dim": action_dim,
+            "hidden_dim": hidden_dim,
+        }
+        critic_kwargs = {
+            "state_dim": state_dim,
+            "action_dim": action_dim,
+            "hidden_dim": hidden_dim,
+        }
+        if self.use_gru_encoder:
+            actor_kwargs["gru_hidden_dim"] = self.gru_hidden_dim
+            critic_kwargs["gru_hidden_dim"] = self.gru_hidden_dim
+
+        self.actor = actor_cls(**actor_kwargs).to(device)
+        self.actor_target = actor_cls(**actor_kwargs).to(device)
         self.actor_target.load_state_dict(self.actor.state_dict())
 
-        self.critic1 = Critic(state_dim, action_dim, hidden_dim).to(device)
-        self.critic2 = Critic(state_dim, action_dim, hidden_dim).to(device)
-        self.critic1_target = Critic(state_dim, action_dim, hidden_dim).to(device)
-        self.critic2_target = Critic(state_dim, action_dim, hidden_dim).to(device)
+        self.critic1 = critic_cls(**critic_kwargs).to(device)
+        self.critic2 = critic_cls(**critic_kwargs).to(device)
+        self.critic1_target = critic_cls(**critic_kwargs).to(device)
+        self.critic2_target = critic_cls(**critic_kwargs).to(device)
         self.critic1_target.load_state_dict(self.critic1.state_dict())
         self.critic2_target.load_state_dict(self.critic2.state_dict())
 
@@ -229,6 +259,12 @@ class TD3Agent:
                 "critic1_optimizer": self.critic1_optimizer.state_dict(),
                 "critic2_optimizer": self.critic2_optimizer.state_dict(),
                 "update_step": self.update_step,
+                "state_dim": self.state_dim,
+                "hidden_dim": self.hidden_dim,
+                "use_gru_encoder": self.use_gru_encoder,
+                "gru_hidden_dim": self.gru_hidden_dim,
+                "action_low": self.action_low_np,
+                "action_high": self.action_high_np,
             },
             path,
         )

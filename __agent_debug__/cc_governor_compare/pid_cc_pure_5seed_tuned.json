@@ -1,0 +1,90 @@
+{
+  "controller": "pure",
+  "mode": "CC",
+  "target": 400.0,
+  "steps": 288,
+  "interval": 5,
+  "summary": {
+    "n": 5,
+    "reward_mean": -1806.5639244409315,
+    "reward_std": 0.006458139834014664,
+    "mass_mean": 400.15127946182645,
+    "mass_std": 0.06957449637581076,
+    "energy_mean": 567.0361031678754,
+    "energy_std": 0.009467865261213277,
+    "eei_mean": 567.0361031678754,
+    "unsafe_steps_mean": 0.0,
+    "zero_unsafe_rate": 1.0,
+    "completion_rate": 1.0,
+    "inband_rate": 1.0,
+    "switch_count_mean": 39.0,
+    "action_delta_mean": 1.2668950796127318
+  },
+  "per_seed": {
+    "91": {
+      "controller": "pure_pid",
+      "reward": -1806.564429570074,
+      "final_mass": 400.20944140778585,
+      "energy_cost": 567.0467338318733,
+      "eei": 567.0467338318733,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.2546424865722656
+    },
+    "92": {
+      "controller": "pure_pid",
+      "reward": -1806.5569951997995,
+      "final_mass": 400.1482459951393,
+      "energy_cost": 567.0329694358114,
+      "eei": 567.0329694358114,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.2585042715072632
+    },
+    "93": {
+      "controller": "pure_pid",
+      "reward": -1806.562464071234,
+      "final_mass": 400.1115629311823,
+      "energy_cost": 567.0357636102455,
+      "eei": 567.0357636102455,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.2699919939041138
+    },
+    "94": {
+      "controller": "pure_pid",
+      "reward": -1806.5758370364429,
+      "final_mass": 400.0458113476904,
+      "energy_cost": 567.044764614842,
+      "eei": 567.044764614842,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.28416109085083
+    },
+    "95": {
+      "controller": "pure_pid",
+      "reward": -1806.559896327106,
+      "final_mass": 400.24133562733437,
+      "energy_cost": 567.0202843466046,
+      "eei": 567.0202843466046,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.267175555229187
+    }
+  }
+}

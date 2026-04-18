@@ -1,0 +1,37 @@
+{
+  "controller": "dual_loop_pid",
+  "mode": "CD",
+  "target": 400.0,
+  "steps": 288,
+  "interval": 5,
+  "summary": {
+    "n": 1,
+    "reward_mean": -1145.7401146174361,
+    "reward_std": 0.0,
+    "mass_mean": 373.41637711095063,
+    "mass_std": 0.0,
+    "energy_mean": 1019.8980142038022,
+    "energy_std": 0.0,
+    "eei_mean": 1019.8980142038022,
+    "unsafe_steps_mean": 0.0,
+    "zero_unsafe_rate": 1.0,
+    "completion_rate": 0.0,
+    "inband_rate": 0.0,
+    "switch_count_mean": 152.0,
+    "action_delta_mean": 18.572895050048828
+  },
+  "per_seed": {
+    "91": {
+      "reward": -1145.7401146174361,
+      "final_mass": 373.41637711095063,
+      "energy_cost": 1019.8980142038022,
+      "eei": 1019.8980142038022,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 0.0,
+      "inband": 0.0,
+      "switch_count": 152.0,
+      "action_delta_mean": 18.572895050048828
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "pid": 23904,
+  "created_at": "2026-04-17T10:59:33",
+  "command": [
+    "F:\\毕设\\claude-code\\train.py",
+    "--algo",
+    "td3",
+    "--mode",
+    "DD",
+    "--use_gru_encoder",
+    "--gru_hidden_dim",
+    "96",
+    "--epochs",
+    "2",
+    "--episodes_per_epoch",
+    "1",
+    "--steps",
+    "20",
+    "--interval",
+    "5",
+    "--device",
+    "cpu",
+    "--run_name",
+    "dd_bg_diag2_20260417_1054"
+  ]
+}

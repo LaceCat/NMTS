@@ -1,0 +1,19 @@
+2026-04-17 11:25:59 Serial run start | tag=bgscript_cuda_short_20260417_1133 | epochs=2 | episodes_per_epoch=1 | device=cuda
+2026-04-17 11:25:59 Starting DD | run_name=dd_gru_serial_bgscript_cuda_short_20260417_1133
+11:26:03 [Train] INFO: ========================================================================
+11:26:03 [Train] INFO: Start GRU-Discrete DDQN (DD) training
+11:26:03 [Train] INFO: Target dry mass: 400.0 t
+11:26:03 [Train] INFO: Decision steps: 288
+11:26:03 [Train] INFO: Decision interval: 5 min
+11:26:03 [Train] INFO: Action mode: DD
+11:26:03 [Train] INFO: Pass band: 400.0 ~ 415.0 t
+11:26:03 [Train] INFO: Curriculum: safety_mass | stage1=2 ep (safe only) | stage2=1 ep (safe 400t) | stage3=0 ep (safe 400t + low EEI)
+11:26:03 [Train] INFO: Total physical time: 1440 min = 24.0 h
+11:26:03 [Train] INFO: Device: cuda
+11:26:03 [Train] INFO: Seed: 42
+11:26:03 [Train] INFO: GRU encoder: on
+11:26:03 [Train] INFO: GRU hidden dim: 96
+11:26:03 [Train] INFO: Run root: F:\±œ…Ë\claude-code\runs
+11:26:03 [Train] INFO: Run dir: F:\±œ…Ë\claude-code\runs\dd_gru_serial_bgscript_cuda_short_20260417_1133
+11:26:03 [Train] INFO: GPU: NVIDIA GeForce RTX 5060 Laptop GPU
+11:26:03 [Train] INFO: ========================================================================

@@ -1,0 +1,24 @@
+{
+  "pid": 39940,
+  "created_at": "2026-04-17T11:26:01",
+  "command": [
+    "F:\\毕设\\claude-code\\train.py",
+    "--algo",
+    "td3",
+    "--mode",
+    "DD",
+    "--use_gru_encoder",
+    "--gru_hidden_dim",
+    "96",
+    "--curriculum",
+    "safety_mass",
+    "--epochs",
+    "2",
+    "--episodes_per_epoch",
+    "1",
+    "--device",
+    "cuda",
+    "--run_name",
+    "dd_gru_serial_bgscript_cuda_short_20260417_1133"
+  ]
+}

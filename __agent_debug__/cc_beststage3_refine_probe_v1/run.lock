@@ -1,0 +1,30 @@
+{
+  "pid": 21364,
+  "created_at": "2026-04-17T16:51:30",
+  "command": [
+    "F:\\毕设\\claude-code\\train.py",
+    "--algo",
+    "td3",
+    "--mode",
+    "CC",
+    "--use_gru_encoder",
+    "--device",
+    "cpu",
+    "--epochs",
+    "8",
+    "--episodes_per_epoch",
+    "2",
+    "--curriculum",
+    "none",
+    "--checkpoint",
+    "F:\\毕设\\claude-code\\runs\\cc_gru_serial_manual_001\\checkpoints\\best_stage3.pth",
+    "--checkpoint_mode",
+    "finetune",
+    "--save_dir",
+    "F:\\毕设\\claude-code\\__agent_debug__",
+    "--run_name",
+    "cc_beststage3_refine_probe_v1",
+    "--force_unlock",
+    "--no_plot"
+  ]
+}

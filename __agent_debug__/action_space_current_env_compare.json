@@ -1,0 +1,160 @@
+{
+  "dd_current_env": {
+    "checkpoint": ".\\runs\\dd_gru_serial_manual_001\\checkpoints\\best_model.pth",
+    "mode": "DD",
+    "summary": {
+      "mass_mean": 417.0219764963978,
+      "mass_std": 13.748716880932346,
+      "energy_mean": 1113.4940000000008,
+      "energy_std": 36.89482828256314,
+      "reward_mean": -61426.38863008232,
+      "reward_std": 24717.81190282427,
+      "eei_mean": 1113.4940000000008,
+      "zero_unsafe_rate": 0.8,
+      "safety_violations_mean": 2.4,
+      "completion_rate": 1.0,
+      "inband_rate": 0.4
+    },
+    "per_seed": {
+      "91": {
+        "final_mass": 420.0348510561435,
+        "energy_cost": 1168.279999999999,
+        "eei": 1168.279999999999,
+        "switch_count": 0,
+        "safety_violations": 0,
+        "target_reached": false,
+        "inband": false,
+        "reward": -66027.70412764045,
+        "completion": true,
+        "zero_unsafe": true
+      },
+      "92": {
+        "final_mass": 404.16687961278666,
+        "energy_cost": 1080.3700000000026,
+        "eei": 1080.3700000000026,
+        "switch_count": 0,
+        "safety_violations": 0,
+        "target_reached": false,
+        "inband": true,
+        "reward": -38158.91519903197,
+        "completion": true,
+        "zero_unsafe": true
+      },
+      "93": {
+        "final_mass": 400.7676580896962,
+        "energy_cost": 1078.8000000000034,
+        "eei": 1078.8000000000034,
+        "switch_count": 0,
+        "safety_violations": 0,
+        "target_reached": false,
+        "inband": true,
+        "reward": -37609.0041452243,
+        "completion": true,
+        "zero_unsafe": true
+      },
+      "94": {
+        "final_mass": 420.9574107377613,
+        "energy_cost": 1093.3750000000032,
+        "eei": 1093.3750000000032,
+        "switch_count": 0,
+        "safety_violations": 12,
+        "target_reached": false,
+        "inband": false,
+        "reward": -105280.21647105085,
+        "completion": true,
+        "zero_unsafe": false
+      },
+      "95": {
+        "final_mass": 439.1830829856019,
+        "energy_cost": 1146.6449999999961,
+        "eei": 1146.6449999999961,
+        "switch_count": 0,
+        "safety_violations": 0,
+        "target_reached": false,
+        "inband": false,
+        "reward": -60056.10320746399,
+        "completion": true,
+        "zero_unsafe": true
+      }
+    }
+  },
+  "cd_current_env": {
+    "checkpoint": ".\\runs\\cd_gru_serial_manual_001\\checkpoints\\best_model.pth",
+    "mode": "CD",
+    "summary": {
+      "mass_mean": 399.150545813999,
+      "mass_std": 2.4032639590071025,
+      "energy_mean": 2016.8846578029716,
+      "energy_std": 6.653045675677017,
+      "reward_mean": -223968.79823659145,
+      "reward_std": 11784.263623073886,
+      "eei_mean": 2016.8846578029716,
+      "zero_unsafe_rate": 0.0,
+      "safety_violations_mean": 11.2,
+      "completion_rate": 0.8,
+      "inband_rate": 0.8
+    },
+    "per_seed": {
+      "91": {
+        "final_mass": 400.34373162122404,
+        "energy_cost": 2004.690920406509,
+        "eei": 2004.690920406509,
+        "switch_count": 0,
+        "safety_violations": 14,
+        "target_reached": false,
+        "inband": true,
+        "reward": -236889.05188270478,
+        "completion": true,
+        "zero_unsafe": false
+      },
+      "92": {
+        "final_mass": 400.63877923742456,
+        "energy_cost": 2022.9132829370167,
+        "eei": 2022.9132829370167,
+        "switch_count": 0,
+        "safety_violations": 14,
+        "target_reached": false,
+        "inband": true,
+        "reward": -224473.80840043753,
+        "completion": true,
+        "zero_unsafe": false
+      },
+      "93": {
+        "final_mass": 400.18656949056805,
+        "energy_cost": 2021.5641107499014,
+        "eei": 2021.5641107499014,
+        "switch_count": 0,
+        "safety_violations": 7,
+        "target_reached": false,
+        "inband": true,
+        "reward": -208356.79218687088,
+        "completion": true,
+        "zero_unsafe": false
+      },
+      "94": {
+        "final_mass": 394.354408723514,
+        "energy_cost": 2020.204565207807,
+        "eei": 2020.204565207807,
+        "switch_count": 0,
+        "safety_violations": 14,
+        "target_reached": false,
+        "inband": false,
+        "reward": -236916.08648198235,
+        "completion": false,
+        "zero_unsafe": false
+      },
+      "95": {
+        "final_mass": 400.22923999726436,
+        "energy_cost": 2015.050409713623,
+        "eei": 2015.050409713623,
+        "switch_count": 0,
+        "safety_violations": 7,
+        "target_reached": false,
+        "inband": true,
+        "reward": -213208.25223096187,
+        "completion": true,
+        "zero_unsafe": false
+      }
+    }
+  }
+}

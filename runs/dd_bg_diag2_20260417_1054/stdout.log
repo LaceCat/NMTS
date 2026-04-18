@@ -1,0 +1,23 @@
+10:59:35 [Train] INFO: ========================================================================
+10:59:35 [Train] INFO: Start GRU-Discrete DDQN (DD) training
+10:59:35 [Train] INFO: Target dry mass: 400.0 t
+10:59:35 [Train] INFO: Decision steps: 20
+10:59:35 [Train] INFO: Decision interval: 5 min
+10:59:35 [Train] INFO: Action mode: DD
+10:59:35 [Train] INFO: Pass band: 400.0 ~ 415.0 t
+10:59:35 [Train] INFO: Curriculum: safety_mass | stage1=2 ep (safe only) | stage2=1 ep (safe 400t) | stage3=0 ep (safe 400t + low EEI)
+10:59:35 [Train] INFO: Total physical time: 100 min = 1.7 h
+10:59:35 [Train] INFO: Device: cpu
+10:59:35 [Train] INFO: Seed: 42
+10:59:35 [Train] INFO: GRU encoder: on
+10:59:35 [Train] INFO: GRU hidden dim: 96
+10:59:35 [Train] INFO: Run root: F:\毕设\claude-code\runs
+10:59:35 [Train] INFO: Run dir: F:\毕设\claude-code\runs\dd_bg_diag2_20260417_1054_01
+10:59:35 [Train] INFO: GPU: NVIDIA GeForce RTX 5060 Laptop GPU
+10:59:35 [Train] INFO: ========================================================================
+Model saved to F:\毕设\claude-code\runs\dd_bg_diag2_20260417_1054_01\checkpoints\best_stage1.pth
+Model saved to F:\毕设\claude-code\runs\dd_bg_diag2_20260417_1054_01\checkpoints\latest.pth
+10:59:35 [Train] INFO: [===============---------------]  50.0% | S1-SAFE | E    1/2 | Rwd    -9.29 | Mass   52.51/safe | Energy    72.68 | UnsafeEp  0.0% | UnsafeSt  0.0% | Meet  0.0% | Pass  0.0% | *BEST* | ETA 00:00:00
+Model saved to F:\毕设\claude-code\runs\dd_bg_diag2_20260417_1054_01\checkpoints\best_stage1.pth
+Model saved to F:\毕设\claude-code\runs\dd_bg_diag2_20260417_1054_01\checkpoints\latest.pth
+10:59:35 [Train] INFO: [==============================] 100.0% | S1-SAFE | E    2/2 | Rwd    -6.30 | Mass   28.10/safe | Energy    45.54 | UnsafeEp  0.0% | UnsafeSt  0.0% | Meet  0.0% | Pass  0.0% | *BEST* | ETA 00:00:00

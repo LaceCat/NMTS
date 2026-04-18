@@ -23,13 +23,69 @@ from utils.metrics import compute_pass_rate, evaluate_episode
 from utils.visualization import save_episode_plot
 
 
+def _transform_obs_for_sac(obs: np.ndarray, target: float, steps: int) -> np.ndarray:
+    arr = np.array(obs, dtype=np.float32, copy=True)
+    if arr.shape[0] < 42:
+        return arr
+
+    raw_c_uf = float(arr[0])
+    raw_m_fp = float(arr[3])
+
+    def _transform_state_block(offset: int):
+        arr[offset + 1] = arr[offset + 1] / 30.0
+        arr[offset + 3] = np.clip((float(target) - arr[offset + 3]) / max(float(target), 1e-6), -2.0, 2.0)
+        arr[offset + 4] = np.clip(arr[offset + 4] / max(float(target), 1e-6), 0.0, 2.0)
+        arr[offset + 6] = np.clip(arr[offset + 6] / max(float(steps), 1.0), 0.0, 1.0)
+
+    _transform_state_block(0)
+    for idx in range(9, 15, 2):
+        arr[idx] = arr[idx] / 50.0
+        arr[idx + 1] = arr[idx + 1] / 70.0
+    for block_start in (15, 24, 33):
+        _transform_state_block(block_start)
+    derived = np.array(
+        [
+            np.clip((float(target) - raw_m_fp) / max(float(target), 1e-6), -2.0, 2.0),
+            1.0 if raw_m_fp >= float(target) else 0.0,
+            raw_c_uf - 0.66,
+            0.75 - raw_c_uf,
+        ],
+        dtype=np.float32,
+    )
+    return np.concatenate([arr, derived], dtype=np.float32)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="RL evaluation")
     parser.add_argument("--checkpoint", type=str, required=True, help="Checkpoint path")
-    parser.add_argument("--algo", type=str, default="esac", choices=["esac", "td3"], help="Algorithm")
+    parser.add_argument("--algo", type=str, default="esac", choices=["esac", "sac", "td3"], help="Algorithm")
     parser.add_argument("--target", type=float, default=400.0, help="Target dry mass")
     parser.add_argument("--steps", type=int, default=DEFAULT_CONTROL_STEPS, help="Decision steps per episode")
     parser.add_argument("--mode", type=str, default="CC", choices=["DD", "CD", "CC"], help="Physical action mode")
+    parser.add_argument(
+        "--uf_control_mode",
+        type=str,
+        default="absolute",
+        choices=["absolute", "delta"],
+        help="Underflow pump control semantics for CD/CC during evaluation.",
+    )
+    parser.add_argument(
+        "--uf_delta_max",
+        type=float,
+        default=5.0,
+        help="Maximum absolute delta for Q_uf when --uf_control_mode delta is enabled.",
+    )
+    parser.add_argument(
+        "--disable_post_target_fp_governor",
+        action="store_true",
+        help="Disable the post-target filter-press governor during evaluation.",
+    )
+    parser.add_argument(
+        "--q_fp_delta_max",
+        type=float,
+        default=-1.0,
+        help="Per-decision maximum change of Q_fp in CC mode. <0 disables the rate limit.",
+    )
     parser.add_argument(
         "--interval",
         type=int,
@@ -42,11 +98,20 @@ def parse_args():
     parser.add_argument("--verbose", action="store_true", help="Print per-episode details")
     parser.add_argument("--batch", action="store_true", help="Reserved batch mode flag")
     parser.add_argument("--save_plots", action="store_true", help="Save episode plots")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.algo.lower() == "sac" and "--uf_control_mode" not in sys.argv:
+        args.uf_control_mode = "delta"
+    if args.algo.lower() == "sac" and "--q_fp_delta_max" not in sys.argv:
+        args.q_fp_delta_max = 12.0
+    return args
 
 
 def evaluate_single(agent, env, seed=0, verbose=False, save_plot=False, adapt_fn=None):
     state, _ = env.reset(seed=seed)
+    algo_name = getattr(getattr(agent, "__class__", None), "__name__", "")
+    is_sac_agent = "SACAgent" == algo_name
+    if is_sac_agent:
+        state = _transform_obs_for_sac(state, env.reward_config.target_mass, env.max_steps)
     done = False
     episode_reward = 0.0
     states_history = []
@@ -61,6 +126,8 @@ def evaluate_single(agent, env, seed=0, verbose=False, save_plot=False, adapt_fn
         else:
             action = agent.select_action(state, deterministic=True)
         next_state, reward, terminated, truncated, info = env.step(action)
+        if is_sac_agent:
+            next_state = _transform_obs_for_sac(next_state, env.reward_config.target_mass, env.max_steps)
         done = terminated or truncated
 
         states_history.append(state.copy())
@@ -129,35 +196,131 @@ def build_agent_and_adapter(args, env):
 
         return agent, needs_adapt, select_action_adapted
 
+    if args.algo == "sac":
+        if args.mode != "CC":
+            raise ValueError("SAC evaluation currently only supports true CC mode.")
+
+        checkpoint = torch.load(args.checkpoint, map_location=args.device, weights_only=False)
+        ckpt_state_dim = int(checkpoint.get("state_dim", env.observation_space.shape[0]))
+        ckpt_hidden_dim = int(checkpoint.get("hidden_dim", 256))
+        ckpt_use_gru = bool(checkpoint.get("use_gru_encoder", False))
+        ckpt_gru_hidden_dim = int(checkpoint.get("gru_hidden_dim", 96))
+        from algorithms.sac import SACAgent
+
+        agent = SACAgent(
+            state_dim=ckpt_state_dim,
+            action_dim=env.action_space.shape[0],
+            hidden_dim=ckpt_hidden_dim,
+            action_low=np.asarray(checkpoint.get("action_low", env.action_space.low), dtype=np.float32),
+            action_high=np.asarray(checkpoint.get("action_high", env.action_space.high), dtype=np.float32),
+            use_gru_encoder=ckpt_use_gru,
+            gru_hidden_dim=ckpt_gru_hidden_dim,
+            device=args.device,
+        )
+
+        env_state_dim = env.observation_space.shape[0]
+        if env_state_dim >= 42:
+            env_state_dim += 4
+        needs_adapt = ckpt_state_dim != env_state_dim
+        if needs_adapt:
+            print(f"Warning: checkpoint state_dim={ckpt_state_dim}, env state_dim={env_state_dim}")
+            print(f"  Using first {ckpt_state_dim} dimensions of observation for evaluation.")
+
+        def select_action_adapted(state, deterministic=True):
+            return agent.select_action(state[:ckpt_state_dim], deterministic=deterministic)
+
+        return agent, needs_adapt, select_action_adapted
+
     if args.mode == "DD":
         from algorithms.discrete_ddqn import DiscreteDDQNAgent
 
+        checkpoint = torch.load(args.checkpoint, map_location=args.device, weights_only=False)
+        ckpt_use_gru = bool(checkpoint.get("use_gru_encoder", False))
+        ckpt_gru_hidden_dim = int(checkpoint.get("gru_hidden_dim", 96))
+        if ckpt_use_gru:
+            ckpt_hidden_dim = int(checkpoint.get("hidden_dim", 256))
+        else:
+            ckpt_hidden_dim = int(checkpoint["q_network"]["net.0.weight"].shape[0])
+        ckpt_state_dim = int(
+            checkpoint.get(
+                "state_dim",
+                checkpoint["q_network"]["net.0.weight"].shape[1] if not ckpt_use_gru else env.observation_space.shape[0],
+            )
+        )
         agent = DiscreteDDQNAgent(
-            state_dim=env.observation_space.shape[0],
+            state_dim=ckpt_state_dim,
             action_dim=env.action_space.shape[0],
+            hidden_dim=ckpt_hidden_dim,
+            use_gru_encoder=ckpt_use_gru,
+            gru_hidden_dim=ckpt_gru_hidden_dim,
             device=args.device,
         )
-        return agent, False, None
+        env_state_dim = env.observation_space.shape[0]
+        needs_adapt = ckpt_state_dim != env_state_dim
+        if needs_adapt:
+            print(f"Warning: checkpoint state_dim={ckpt_state_dim}, env state_dim={env_state_dim}")
+            print(f"  Using first {ckpt_state_dim} dimensions of observation for evaluation.")
+
+        def select_action_adapted(state, deterministic=True):
+            return agent.select_action(state[:ckpt_state_dim], deterministic=deterministic)
+
+        return agent, needs_adapt, select_action_adapted
 
     if args.mode == "CD":
         from algorithms.hybrid_td3 import HybridTD3Agent
 
+        checkpoint = torch.load(args.checkpoint, map_location=args.device, weights_only=False)
+        ckpt_use_gru = bool(checkpoint.get("use_gru_encoder", False))
+        ckpt_gru_hidden_dim = int(checkpoint.get("gru_hidden_dim", 96))
+        if ckpt_use_gru:
+            ckpt_hidden_dim = int(checkpoint.get("hidden_dim", 256))
+        else:
+            ckpt_hidden_dim = int(checkpoint["actor"]["net.0.weight"].shape[0])
+        ckpt_state_dim = int(
+            checkpoint.get(
+                "state_dim",
+                checkpoint["actor"]["net.0.weight"].shape[1] if not ckpt_use_gru else env.observation_space.shape[0],
+            )
+        )
         agent = HybridTD3Agent(
-            state_dim=env.observation_space.shape[0],
+            state_dim=ckpt_state_dim,
             action_dim=env.action_space.shape[0],
+            hidden_dim=ckpt_hidden_dim,
+            q_uf_low=float(env.action_space.low[0]),
+            q_uf_high=float(env.action_space.high[0]),
+            use_gru_encoder=ckpt_use_gru,
+            gru_hidden_dim=ckpt_gru_hidden_dim,
             device=args.device,
         )
-        return agent, False, None
+        env_state_dim = env.observation_space.shape[0]
+        needs_adapt = ckpt_state_dim != env_state_dim
+        if needs_adapt:
+            print(f"Warning: checkpoint state_dim={ckpt_state_dim}, env state_dim={env_state_dim}")
+            print(f"  Using first {ckpt_state_dim} dimensions of observation for evaluation.")
+
+        def select_action_adapted(state, deterministic=True):
+            return agent.select_action(state[:ckpt_state_dim], deterministic=deterministic)
+
+        return agent, needs_adapt, select_action_adapted
 
     checkpoint = torch.load(args.checkpoint, map_location=args.device, weights_only=False)
-    ckpt_state_dim = env.observation_space.shape[0]
+    ckpt_state_dim = int(checkpoint.get("state_dim", env.observation_space.shape[0]))
+    ckpt_hidden_dim = int(checkpoint.get("hidden_dim", 256))
+    ckpt_use_gru = bool(checkpoint.get("use_gru_encoder", False))
+    ckpt_gru_hidden_dim = int(checkpoint.get("gru_hidden_dim", 96))
     actor_key = checkpoint.get("actor", None)
     if actor_key is not None and "net.0.weight" in actor_key:
         ckpt_state_dim = actor_key["net.0.weight"].shape[1]
+        ckpt_hidden_dim = actor_key["net.0.weight"].shape[0]
 
     agent = TD3Agent(
         state_dim=ckpt_state_dim,
         action_dim=env.action_space.shape[0],
+        hidden_dim=ckpt_hidden_dim,
+        action_low=np.asarray(checkpoint.get("action_low", env.action_space.low), dtype=np.float32),
+        action_high=np.asarray(checkpoint.get("action_high", env.action_space.high), dtype=np.float32),
+        use_gru_encoder=ckpt_use_gru,
+        gru_hidden_dim=ckpt_gru_hidden_dim,
         device=args.device,
     )
 
@@ -182,8 +345,12 @@ def main():
         decision_interval=args.interval,
         target_mass=args.target,
         mode=args.mode,
+        uf_control_mode=args.uf_control_mode,
+        uf_delta_max=args.uf_delta_max,
+        q_fp_delta_max=(None if args.q_fp_delta_max < 0 else args.q_fp_delta_max),
         pricing=PricingPresets.daily_24h(),
         reward_config=reward_config,
+        enable_post_target_fp_governor=not args.disable_post_target_fp_governor,
     )
 
     agent, needs_adapt, select_action_adapted = build_agent_and_adapter(args, env)

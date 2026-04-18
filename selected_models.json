@@ -1,0 +1,31 @@
+{
+  "continuous_model": {
+    "name": "CC-TD3 with terminal governor",
+    "mode": "CC",
+    "algo": "td3",
+    "checkpoint": "F:\\毕设\\claude-code\\runs\\cc_batch_dryrun_lowconc_probe_v2scan\\checkpoints\\selected_epoch9_balanced.pth",
+    "post_target_fp_governor": true,
+    "selection_reason": "Current official continuous-control model. Chosen under the principle: no unsafe first, then lower energy, with 400 t treated as a task constraint.",
+    "evaluation_summary_5seeds": {
+      "seeds": [
+        91,
+        92,
+        93,
+        94,
+        95
+      ],
+      "mass_mean": 400.5395921718866,
+      "mass_std": 0.2743879647193213,
+      "energy_mean": 672.7693813421272,
+      "energy_std": 7.174202477825119,
+      "zero_unsafe_rate": 1.0,
+      "inband_rate": 1.0
+    },
+    "representative_rollout": {
+      "seed": 91,
+      "png": "F:\\毕设\\claude-code\\__agent_debug__\\cc_selected_epoch9_governed_timeseries\\cc_selected_epoch9_balanced_seed91_timeseries.png",
+      "csv": "F:\\毕设\\claude-code\\__agent_debug__\\cc_selected_epoch9_governed_timeseries\\cc_selected_epoch9_balanced_seed91_timeseries.csv",
+      "summary_json": "F:\\毕设\\claude-code\\__agent_debug__\\cc_selected_epoch9_governed_timeseries\\cc_selected_epoch9_balanced_seed91_summary.json"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "epochs": [
+    {
+      "epoch": 1,
+      "avg_reward": -155.42118007683598,
+      "avg_mass": 560.125658914199,
+      "avg_energy": 1057.1687298412808,
+      "avg_safety_violations": 0.0,
+      "unsafe_episode_rate": 0.0,
+      "unsafe_step_rate": 0.0,
+      "stage": "stage1",
+      "stage_label": "S1-SAFE",
+      "stage_target_enabled": false,
+      "stage_target_mass": 400.0,
+      "completion_rate": 0.0,
+      "pass_rate": 0.0,
+      "avg_target_band_distance": 0.0,
+      "final_completion_rate": 1.0,
+      "final_pass_rate": 0.0,
+      "final_target_band_distance": 140.125658914199,
+      "best_reward": -155.42118007683598,
+      "algo": "td3",
+      "elapsed": 0.4292635917663574,
+      "eta_seconds": 0.0
+    }
+  ],
+  "all_rewards": [
+    -155.42118007683598
+  ],
+  "all_masses": [
+    560.125658914199
+  ],
+  "all_energy": [
+    1057.1687298412808
+  ]
+}

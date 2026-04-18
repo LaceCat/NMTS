@@ -35,6 +35,7 @@ class RewardScheme:
         c_aver: float,
         q_uf: float,
         q_fp: float,
+        prev_c_uf: float,
         prev_q_uf: float,
         prev_q_fp: float,
         prev_v_buf: float,
@@ -47,12 +48,137 @@ class RewardScheme:
         episode_step: int,
         max_steps: int,
         safety_violations: int = 0,
+        dry_run_minutes: int = 0,
+        low_conc_minutes: int = 0,
     ) -> Tuple[float, Dict[str, float], bool]:
-        del current_price, min_price, max_price, c_aver, prev_v_buf, prev_c_aver
+        del min_price, c_aver, prev_v_buf, prev_c_aver
         del timecnt, max_time_steps, is_safe
 
         rc = self.config
         done = False
+
+        if getattr(rc, "reward_mode", "default") == "progress_constraints":
+            progress_reward = 0.0
+            productive_delta = 0.0
+            excess_delta = 0.0
+
+            if rc.enable_target_objective:
+                prev_gap = max(rc.target_mass - prev_m_fp, 0.0)
+                curr_gap = max(rc.target_mass - m_fp, 0.0)
+                progress_reward = rc.throughput_reward_weight * (prev_gap - curr_gap)
+
+                prev_c_gap = max(rc.uf_conc_soft_low_limit - prev_c_uf, 0.0)
+                curr_c_gap = max(rc.uf_conc_soft_low_limit - c_uf, 0.0)
+                progress_reward += rc.concentration_progress_weight * (prev_c_gap - curr_c_gap)
+
+                above_target_prev = max(prev_m_fp - rc.target_mass, 0.0)
+                above_target_curr = max(m_fp - rc.target_mass, 0.0)
+                excess_delta = max(above_target_curr - above_target_prev, 0.0)
+                progress_reward -= rc.post_target_delta_penalty_weight * excess_delta
+                productive_delta = max(prev_gap - curr_gap, 0.0)
+            else:
+                prev_deficit = max(rc.uf_conc_soft_low_limit - prev_c_uf, 0.0)
+                curr_deficit = max(rc.uf_conc_soft_low_limit - c_uf, 0.0)
+                progress_reward = rc.concentration_progress_weight * (prev_deficit - curr_deficit)
+
+            energy_reward = -rc.energy_cost_weight * energy_cost
+
+            uf_unsafe = c_uf > rc.uf_conc_hard_limit
+            buf_unsafe = v_buf > rc.buffer_vol_hard_limit
+            unsafe_now = bool(safety_violations > 0 or uf_unsafe or buf_unsafe)
+
+            safety_penalty = 0.0
+            if unsafe_now:
+                safety_penalty -= rc.safety_violation_penalty * float(max(safety_violations, 1))
+            if uf_unsafe:
+                exceed = max(c_uf - rc.uf_conc_hard_limit, 0.0)
+                safety_penalty -= rc.uf_conc_penalty * (1.0 + 10.0 * exceed)
+            if buf_unsafe:
+                exceed = max(v_buf - rc.buffer_vol_hard_limit, 0.0)
+                safety_penalty -= rc.buffer_vol_penalty * (1.0 + exceed / max(rc.buffer_vol_hard_limit, 1.0))
+
+            if rc.unsafe_step_reward_block and unsafe_now:
+                progress_reward = min(progress_reward, 0.0)
+
+            dry_run_penalty = 0.0
+            if dry_run_minutes > 0:
+                dry_run_penalty -= rc.dry_run_penalty * float(dry_run_minutes)
+
+            low_conc_penalty = 0.0
+            if low_conc_minutes > 0:
+                low_conc_penalty -= rc.uf_conc_low_penalty * float(low_conc_minutes)
+
+            dry_run_flow_penalty = 0.0
+            if rc.dry_run_flow_penalty_weight > 0.0:
+                q_fp_norm = float(np.clip(q_fp / 70.0, 0.0, 1.0))
+                low_buffer_gap = max(float(rc.dry_run_buffer_threshold) - v_buf, 0.0)
+                low_buffer_gap = low_buffer_gap / max(float(rc.dry_run_buffer_threshold), 1e-6)
+                dry_run_flow_penalty -= rc.dry_run_flow_penalty_weight * low_buffer_gap * (q_fp_norm ** 2)
+
+            uf_flow_quality_penalty = 0.0
+            if rc.uf_low_conc_flow_penalty_weight > 0.0:
+                low_gap = max(float(rc.uf_conc_guidance_target) - c_uf, 0.0)
+                q_uf_norm = float(np.clip(q_uf / 50.0, 0.0, 1.0))
+                uf_flow_quality_penalty -= rc.uf_low_conc_flow_penalty_weight * (low_gap ** 2) * q_uf_norm
+
+            medium_constraint_now = bool(dry_run_minutes > 0 or low_conc_minutes > 0)
+            if rc.constraint_step_reward_block and medium_constraint_now:
+                progress_reward = min(progress_reward, 0.0)
+
+            terminal_reward = 0.0
+            is_final_step = episode_step >= max_steps - 1
+            if is_final_step:
+                done = True
+                if rc.enable_target_objective:
+                    deficit = max(rc.target_mass - m_fp, 0.0)
+                    overshoot = max(m_fp - rc.target_mass_high, 0.0)
+                    if deficit > 0.0:
+                        terminal_reward -= rc.terminal_under_penalty_weight * deficit
+                    else:
+                        terminal_reward += rc.terminal_target_band_bonus
+                        terminal_reward -= rc.terminal_over_penalty_weight * overshoot
+                else:
+                    terminal_reward += rc.terminal_target_band_bonus if c_uf >= rc.uf_conc_soft_low_limit else 0.0
+
+                if unsafe_now:
+                    terminal_reward -= rc.terminal_safety_block_penalty
+
+            total_reward = (
+                progress_reward
+                + energy_reward
+                + safety_penalty
+                + dry_run_penalty
+                + low_conc_penalty
+                + dry_run_flow_penalty
+                + uf_flow_quality_penalty
+                + terminal_reward
+            )
+            total_reward = float(np.clip(total_reward, rc.reward_clip_min, rc.reward_clip_max))
+
+            breakdown = {
+                "production": float(progress_reward),
+                "productive_delta": float(productive_delta),
+                "glide_delta": 0.0,
+                "excess_delta": float(excess_delta),
+                "target_gap": 0.0,
+                "overshoot": float(-rc.post_target_delta_penalty_weight * excess_delta),
+                "schedule": 0.0,
+                "target_cross": 0.0,
+                "throughput": float(progress_reward),
+                "band_hold": 0.0,
+                "energy": float(energy_reward),
+                "fp_usage": 0.0,
+                "post_target_hold": float(dry_run_flow_penalty),
+                "safety": float(safety_penalty),
+                "dry_run": float(dry_run_penalty),
+                "low_conc": float(low_conc_penalty),
+                "conc_quality": 0.0,
+                "uf_flow_quality": float(uf_flow_quality_penalty),
+                "smooth": 0.0,
+                "terminal": float(terminal_reward),
+                "total": total_reward,
+            }
+            return total_reward, breakdown, done
 
         production_reward = 0.0
         productive_delta = 0.0
@@ -90,6 +216,32 @@ class RewardScheme:
 
         # 2) Energy is important, but still secondary to safety and end-of-day success.
         energy_reward = -rc.energy_cost_weight * energy_cost
+        price_scale = float(current_price / max(max_price, 1e-6))
+        q_fp_norm = float(np.clip(q_fp / 70.0, 0.0, 1.0))
+        base_fp_usage_penalty = -rc.fp_usage_weight * (q_fp_norm ** 2) * price_scale
+        post_target_fp_penalty = 0.0
+        post_target_hold_penalty = 0.0
+        if rc.enable_target_objective and m_fp >= rc.target_mass:
+            post_target_fp_penalty -= rc.post_target_fp_usage_weight * (q_fp_norm ** 2) * price_scale
+            if rc.post_target_buffer_hold_weight > 0.0:
+                guard_level = max(rc.post_target_buffer_guard_level, 1e-6)
+                # If the target is already met and the buffer is still far from full,
+                # keeping the filter press on has little value. Relax this pressure
+                # only when the buffer rises close to its upper range.
+                hold_scale = float(np.clip((guard_level - v_buf) / guard_level, 0.0, 1.0))
+                post_target_hold_penalty -= rc.post_target_buffer_hold_weight * hold_scale * (q_fp_norm ** 2)
+        fp_usage_penalty = base_fp_usage_penalty + post_target_fp_penalty + post_target_hold_penalty
+
+        schedule_reward = 0.0
+        if rc.enable_target_objective and max_steps > 0:
+            expected_mass = rc.target_mass * min((episode_step + 1) / max_steps, 1.0)
+            tolerance = rc.schedule_tolerance_ratio * rc.target_mass
+            ahead_gap = max(m_fp - expected_mass - tolerance, 0.0)
+            behind_gap = max(expected_mass - m_fp - tolerance, 0.0)
+            schedule_reward = (
+                -rc.schedule_ahead_weight * ahead_gap
+                -rc.schedule_behind_weight * behind_gap
+            )
 
         # 3) Safety remains a hard preference in the reward.
         uf_unsafe = c_uf > rc.uf_conc_hard_limit
@@ -110,6 +262,46 @@ class RewardScheme:
         if rc.unsafe_step_reward_block and unsafe_now:
             production_reward = min(production_reward, 0.0)
 
+        # Medium-severity constraint penalties:
+        # these terms discourage poor operation quality, but are deliberately
+        # weaker than hard-safety penalties so the reward hierarchy remains:
+        # hard safety > soft quality / dry-run constraints > economics.
+        dry_run_penalty = 0.0
+        if dry_run_minutes > 0:
+            dry_run_penalty -= rc.dry_run_penalty * float(dry_run_minutes)
+
+        low_conc_penalty = 0.0
+        if low_conc_minutes > 0:
+            low_conc_penalty -= rc.uf_conc_low_penalty * float(low_conc_minutes)
+
+        conc_quality_reward = 0.0
+        if (
+            rc.uf_conc_guidance_below_weight > 0.0
+            or rc.uf_conc_guidance_above_weight > 0.0
+            or rc.uf_conc_guidance_band_bonus != 0.0
+        ):
+            target = float(rc.uf_conc_guidance_target)
+            band = max(float(rc.uf_conc_guidance_band), 0.0)
+            below_gap = max(target - c_uf, 0.0)
+            above_gap = max(c_uf - target, 0.0)
+            # Use smooth quadratic shaping so the learner gets a usable local
+            # gradient near the desired operating region, instead of a large
+            # nearly constant penalty whenever C_uf is simply "too low".
+            conc_quality_reward -= rc.uf_conc_guidance_below_weight * (below_gap ** 2)
+            conc_quality_reward -= rc.uf_conc_guidance_above_weight * (above_gap ** 2)
+            if band > 0.0:
+                distance = abs(c_uf - target)
+                if distance <= band:
+                    conc_quality_reward += rc.uf_conc_guidance_band_bonus * (1.0 - distance / band)
+            elif c_uf == target:
+                conc_quality_reward += rc.uf_conc_guidance_band_bonus
+
+        uf_flow_quality_penalty = 0.0
+        if rc.uf_low_conc_flow_penalty_weight > 0.0:
+            low_gap = max(float(rc.uf_conc_guidance_target) - c_uf, 0.0)
+            q_uf_norm = float(np.clip(q_uf / 50.0, 0.0, 1.0))
+            uf_flow_quality_penalty -= rc.uf_low_conc_flow_penalty_weight * (low_gap ** 2) * q_uf_norm
+
         # 4) Terminal objective:
         # final judgement is dominated by whether the episode lands inside the target band.
         terminal_reward = 0.0
@@ -118,6 +310,8 @@ class RewardScheme:
             done = True
             if rc.enable_target_objective:
                 deficit = max(rc.target_mass - m_fp, 0.0)
+                total_overshoot = max(m_fp - rc.target_mass, 0.0)
+                inband_overshoot = min(total_overshoot, max(rc.target_mass_high - rc.target_mass, 0.0))
                 overshoot = max(m_fp - rc.target_mass_high, 0.0)
 
                 if deficit > 0.0:
@@ -125,13 +319,16 @@ class RewardScheme:
                         -rc.terminal_under_penalty_weight * deficit
                         -rc.terminal_under_penalty_quadratic * deficit ** 2
                     )
-                elif overshoot <= 0.0:
-                    terminal_reward = rc.terminal_target_band_bonus
                 else:
                     terminal_reward = (
-                        -rc.terminal_over_penalty_weight * overshoot
-                        -rc.terminal_over_penalty_quadratic * overshoot ** 2
+                        rc.terminal_target_band_bonus
+                        - rc.terminal_inband_over_penalty_weight * inband_overshoot
                     )
+                    if overshoot > 0.0:
+                        terminal_reward -= (
+                            rc.terminal_over_penalty_weight * overshoot
+                            + rc.terminal_over_penalty_quadratic * overshoot ** 2
+                        )
 
             if unsafe_now:
                 terminal_reward -= rc.terminal_safety_block_penalty
@@ -139,7 +336,13 @@ class RewardScheme:
         total_reward = (
             production_reward
             + energy_reward
+            + fp_usage_penalty
+            + schedule_reward
             + safety_penalty
+            + dry_run_penalty
+            + low_conc_penalty
+            + conc_quality_reward
+            + uf_flow_quality_penalty
             + terminal_reward
         )
         total_reward = float(np.clip(total_reward, rc.reward_clip_min, rc.reward_clip_max))
@@ -151,12 +354,18 @@ class RewardScheme:
             "excess_delta": float(excess_delta),
             "target_gap": 0.0,
             "overshoot": float(-rc.post_target_delta_penalty_weight * excess_delta),
-            "schedule": 0.0,
+            "schedule": float(schedule_reward),
             "target_cross": 0.0,
             "throughput": float(production_reward),
             "band_hold": 0.0,
             "energy": float(energy_reward),
+            "fp_usage": float(fp_usage_penalty),
+            "post_target_hold": float(post_target_hold_penalty),
             "safety": float(safety_penalty),
+            "dry_run": float(dry_run_penalty),
+            "low_conc": float(low_conc_penalty),
+            "conc_quality": float(conc_quality_reward),
+            "uf_flow_quality": float(uf_flow_quality_penalty),
             "smooth": 0.0,
             "terminal": float(terminal_reward),
             "total": total_reward,

@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from utils.networks import GRUHybridActor, GRUHybridCritic
 from utils.replay_buffer import ReplayBuffer
 
 
@@ -100,10 +101,17 @@ class HybridTD3Agent:
         policy_freq: int = POLICY_FREQ,
         exploration_noise: float = EXPLORATION_NOISE,
         discrete_exploration_prob: float = DISCRETE_EXPLORATION_PROB,
+        q_uf_low: float = 0.0,
+        q_uf_high: float = 50.0,
+        use_gru_encoder: bool = False,
+        gru_hidden_dim: int = 96,
         device: str = "cpu",
     ):
         self.state_dim = state_dim
         self.action_dim = action_dim
+        self.hidden_dim = hidden_dim
+        self.use_gru_encoder = bool(use_gru_encoder)
+        self.gru_hidden_dim = int(gru_hidden_dim)
         self.batch_size = batch_size
         self.gamma = gamma
         self.tau = tau
@@ -111,8 +119,8 @@ class HybridTD3Agent:
         self.device = device
         self.update_step = 0
 
-        self.q_uf_low = 0.0
-        self.q_uf_high = 50.0
+        self.q_uf_low = float(q_uf_low)
+        self.q_uf_high = float(q_uf_high)
         self.q_fp_off = 0.0
         self.q_fp_on = 70.0
 
@@ -127,14 +135,29 @@ class HybridTD3Agent:
 
         self.buffer = ReplayBuffer(capacity=buffer_capacity)
 
-        self.actor = HybridActor(state_dim, hidden_dim).to(device)
-        self.actor_target = HybridActor(state_dim, hidden_dim).to(device)
+        actor_cls = GRUHybridActor if self.use_gru_encoder else HybridActor
+        critic_cls = GRUHybridCritic if self.use_gru_encoder else HybridCritic
+        actor_kwargs = {
+            "state_dim": state_dim,
+            "hidden_dim": hidden_dim,
+        }
+        critic_kwargs = {
+            "state_dim": state_dim,
+            "action_dim": action_dim,
+            "hidden_dim": hidden_dim,
+        }
+        if self.use_gru_encoder:
+            actor_kwargs["gru_hidden_dim"] = self.gru_hidden_dim
+            critic_kwargs["gru_hidden_dim"] = self.gru_hidden_dim
+
+        self.actor = actor_cls(**actor_kwargs).to(device)
+        self.actor_target = actor_cls(**actor_kwargs).to(device)
         self.actor_target.load_state_dict(self.actor.state_dict())
 
-        self.critic1 = HybridCritic(state_dim, action_dim, hidden_dim).to(device)
-        self.critic2 = HybridCritic(state_dim, action_dim, hidden_dim).to(device)
-        self.critic1_target = HybridCritic(state_dim, action_dim, hidden_dim).to(device)
-        self.critic2_target = HybridCritic(state_dim, action_dim, hidden_dim).to(device)
+        self.critic1 = critic_cls(**critic_kwargs).to(device)
+        self.critic2 = critic_cls(**critic_kwargs).to(device)
+        self.critic1_target = critic_cls(**critic_kwargs).to(device)
+        self.critic2_target = critic_cls(**critic_kwargs).to(device)
         self.critic1_target.load_state_dict(self.critic1.state_dict())
         self.critic2_target.load_state_dict(self.critic2.state_dict())
 
@@ -278,6 +301,11 @@ class HybridTD3Agent:
                 "critic2_optimizer": self.critic2_optimizer.state_dict(),
                 "update_step": self.update_step,
                 "state_dim": self.state_dim,
+                "hidden_dim": self.hidden_dim,
+                "use_gru_encoder": self.use_gru_encoder,
+                "gru_hidden_dim": self.gru_hidden_dim,
+                "q_uf_low": self.q_uf_low,
+                "q_uf_high": self.q_uf_high,
             },
             path,
         )

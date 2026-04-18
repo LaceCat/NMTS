@@ -1,0 +1,28 @@
+11:02:06 [Train] INFO: ========================================================================
+11:02:06 [Train] INFO: Start GRU-Discrete DDQN (DD) training
+11:02:06 [Train] INFO: Target dry mass: 400.0 t
+11:02:06 [Train] INFO: Decision steps: 20
+11:02:06 [Train] INFO: Decision interval: 5 min
+11:02:06 [Train] INFO: Action mode: DD
+11:02:06 [Train] INFO: Pass band: 400.0 ~ 415.0 t
+11:02:06 [Train] INFO: Curriculum: safety_mass | stage1=2 ep (safe only) | stage2=1 ep (safe 400t) | stage3=0 ep (safe 400t + low EEI)
+11:02:06 [Train] INFO: Total physical time: 100 min = 1.7 h
+11:02:06 [Train] INFO: Device: cuda
+11:02:06 [Train] INFO: Seed: 42
+11:02:06 [Train] INFO: GRU encoder: on
+11:02:06 [Train] INFO: GRU hidden dim: 96
+11:02:06 [Train] INFO: Run root: F:\毕设\claude-code\runs
+11:02:06 [Train] INFO: Run dir: F:\毕设\claude-code\runs\dd_bg_cuda_diag_20260417_1104
+11:02:06 [Train] INFO: GPU: NVIDIA GeForce RTX 5060 Laptop GPU
+11:02:06 [Train] INFO: ========================================================================
+Model saved to F:\毕设\claude-code\runs\dd_bg_cuda_diag_20260417_1104\checkpoints\best_stage1.pth
+Model saved to F:\毕设\claude-code\runs\dd_bg_cuda_diag_20260417_1104\checkpoints\latest.pth
+11:02:07 [Train] INFO: [===============---------------]  50.0% | S1-SAFE | E    1/2 | Rwd    -9.29 | Mass   52.51/safe | Energy    72.68 | UnsafeEp  0.0% | UnsafeSt  0.0% | Meet  0.0% | Pass  0.0% | *BEST* | ETA 00:00:00
+Model saved to F:\毕设\claude-code\runs\dd_bg_cuda_diag_20260417_1104\checkpoints\best_stage1.pth
+Model saved to F:\毕设\claude-code\runs\dd_bg_cuda_diag_20260417_1104\checkpoints\latest.pth
+11:02:07 [Train] INFO: [==============================] 100.0% | S1-SAFE | E    2/2 | Rwd    -6.30 | Mass   28.10/safe | Energy    45.54 | UnsafeEp  0.0% | UnsafeSt  0.0% | Meet  0.0% | Pass  0.0% | *BEST* | ETA 00:00:00
+Model saved to F:\毕设\claude-code\runs\dd_bg_cuda_diag_20260417_1104\checkpoints\final_model.pth
+训练曲线已保存到 F:\毕设\claude-code\runs\dd_bg_cuda_diag_20260417_1104\plots\training_metrics.png
+11:02:08 [Train] INFO: Training finished. Total time: 00:00:01
+11:02:08 [Train] INFO: Best reward: -6.30
+11:02:08 [Train] INFO: Artifacts saved in: F:\毕设\claude-code\runs\dd_bg_cuda_diag_20260417_1104

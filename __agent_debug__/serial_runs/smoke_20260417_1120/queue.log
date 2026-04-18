@@ -1,0 +1,8 @@
+2026-04-17 11:21:56 Serial run start | tag=smoke_20260417_1120 | epochs=1 | episodes_per_epoch=1 | device=cpu
+2026-04-17 11:21:56 Starting DD | run_name=dd_gru_serial_smoke_20260417_1120
+2026-04-17 11:22:02 Completed DD | run_name=dd_gru_serial_smoke_20260417_1120
+2026-04-17 11:22:02 Starting CD | run_name=cd_gru_serial_smoke_20260417_1120
+2026-04-17 11:22:07 Completed CD | run_name=cd_gru_serial_smoke_20260417_1120
+2026-04-17 11:22:07 Starting CC | run_name=cc_gru_serial_smoke_20260417_1120
+2026-04-17 11:22:11 Completed CC | run_name=cc_gru_serial_smoke_20260417_1120
+2026-04-17 11:22:11 All serial runs finished | tag=smoke_20260417_1120

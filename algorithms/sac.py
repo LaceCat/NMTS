@@ -1,0 +1,517 @@
+"""
+Standard single-actor Soft Actor-Critic for the continuous-control CC setup.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Dict, Optional, Tuple
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from utils.networks import HistoryGRUEncoder
+from utils.replay_buffer import PrioritizedReplayBuffer, ReplayBuffer
+
+
+STATE_DIM = 42
+ACTION_DIM = 2
+HIDDEN_DIM = 256
+BUFFER_CAPACITY = 1_000_000
+BATCH_SIZE = 256
+GAMMA = 0.99
+TAU = 0.005
+LR_ACTOR = 3e-4
+LR_CRITIC = 3e-4
+LR_ALPHA = 3e-4
+INIT_ALPHA = 0.2
+LOG_STD_MIN = -20.0
+LOG_STD_MAX = -0.75
+MEAN_ACTION_Q_WEIGHT = 0.35
+STD_REG_WEIGHT = 0.02
+ACTION_BOUNDS_LOW = np.array([0.0, 0.0], dtype=np.float32)
+ACTION_BOUNDS_HIGH = np.array([50.0, 70.0], dtype=np.float32)
+PER_ALPHA = 0.6
+PER_BETA_START = 0.4
+PER_BETA_END = 1.0
+PER_BETA_FRAMES = 100000
+N_STEP = 3
+
+
+def _safe_atanh(x: np.ndarray) -> np.ndarray:
+    x = np.clip(x, -0.999, 0.999)
+    return 0.5 * np.log((1.0 + x) / (1.0 - x))
+
+
+class GaussianActor(nn.Module):
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self.backbone = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.LayerNorm(hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, hidden_dim // 4),
+            nn.LayerNorm(hidden_dim // 4),
+            nn.ReLU(),
+        )
+        self.mean_head = nn.Linear(hidden_dim // 4, action_dim)
+        self.log_std_head = nn.Linear(hidden_dim // 4, action_dim)
+
+    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        x = self.backbone(state)
+        mean = self.mean_head(x)
+        log_std = torch.clamp(self.log_std_head(x), LOG_STD_MIN, LOG_STD_MAX)
+        return mean, log_std
+
+
+class GaussianCritic(nn.Module):
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.LayerNorm(hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, hidden_dim // 4),
+            nn.LayerNorm(hidden_dim // 4),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 4, 1),
+        )
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self.net(torch.cat([state, action], dim=-1))
+
+
+class GRUGaussianActor(nn.Module):
+    def __init__(
+        self,
+        state_dim: int = 42,
+        action_dim: int = 2,
+        hidden_dim: int = 256,
+        gru_hidden_dim: int = 96,
+    ):
+        super().__init__()
+        self.encoder = HistoryGRUEncoder(
+            state_dim=state_dim,
+            hidden_dim=hidden_dim,
+            gru_hidden_dim=gru_hidden_dim,
+        )
+        self.mean_head = nn.Linear(self.encoder.output_dim, action_dim)
+        self.log_std_head = nn.Linear(self.encoder.output_dim, action_dim)
+
+    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        x = self.encoder(state)
+        mean = self.mean_head(x)
+        log_std = torch.clamp(self.log_std_head(x), LOG_STD_MIN, LOG_STD_MAX)
+        return mean, log_std
+
+
+class GRUGaussianCritic(nn.Module):
+    def __init__(
+        self,
+        state_dim: int = 42,
+        action_dim: int = 2,
+        hidden_dim: int = 256,
+        gru_hidden_dim: int = 96,
+    ):
+        super().__init__()
+        self.encoder = HistoryGRUEncoder(
+            state_dim=state_dim,
+            hidden_dim=hidden_dim,
+            gru_hidden_dim=gru_hidden_dim,
+        )
+        critic_hidden = max(hidden_dim // 2, 64)
+        critic_mid = max(hidden_dim // 4, 32)
+        self.q_head = nn.Sequential(
+            nn.Linear(self.encoder.output_dim + action_dim, critic_hidden),
+            nn.LayerNorm(critic_hidden),
+            nn.ReLU(),
+            nn.Linear(critic_hidden, critic_mid),
+            nn.LayerNorm(critic_mid),
+            nn.ReLU(),
+            nn.Linear(critic_mid, 1),
+        )
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        feat = self.encoder(state)
+        return self.q_head(torch.cat([feat, action], dim=-1))
+
+
+class SACAgent:
+    def __init__(
+        self,
+        state_dim: int = STATE_DIM,
+        action_dim: int = ACTION_DIM,
+        hidden_dim: int = HIDDEN_DIM,
+        buffer_capacity: int = BUFFER_CAPACITY,
+        batch_size: int = BATCH_SIZE,
+        gamma: float = GAMMA,
+        tau: float = TAU,
+        lr_actor: float = LR_ACTOR,
+        lr_critic: float = LR_CRITIC,
+        lr_alpha: float = LR_ALPHA,
+        init_alpha: float = INIT_ALPHA,
+        target_entropy: Optional[float] = None,
+        action_low=None,
+        action_high=None,
+        use_gru_encoder: bool = False,
+        gru_hidden_dim: int = 96,
+        mean_action_q_weight: float = MEAN_ACTION_Q_WEIGHT,
+        std_reg_weight: float = STD_REG_WEIGHT,
+        n_step: int = N_STEP,
+        device: str = "cpu",
+    ):
+        self.state_dim = int(state_dim)
+        self.action_dim = int(action_dim)
+        self.hidden_dim = int(hidden_dim)
+        self.batch_size = int(batch_size)
+        self.gamma = float(gamma)
+        self.tau = float(tau)
+        self.device = device
+        self.use_gru_encoder = bool(use_gru_encoder)
+        self.gru_hidden_dim = int(gru_hidden_dim)
+        self.mean_action_q_weight = float(mean_action_q_weight)
+        self.std_reg_weight = float(std_reg_weight)
+        self.n_step = max(int(n_step), 1)
+        self.update_step = 0
+
+        self.action_low_np = (
+            np.asarray(action_low, dtype=np.float32).copy()
+            if action_low is not None else ACTION_BOUNDS_LOW.copy()
+        )
+        self.action_high_np = (
+            np.asarray(action_high, dtype=np.float32).copy()
+            if action_high is not None else ACTION_BOUNDS_HIGH.copy()
+        )
+        self.action_range_np = self.action_high_np - self.action_low_np
+        self.action_bias_np = 0.5 * (self.action_high_np + self.action_low_np)
+
+        self.action_low = torch.tensor(self.action_low_np, dtype=torch.float32, device=device)
+        self.action_high = torch.tensor(self.action_high_np, dtype=torch.float32, device=device)
+        self.action_scale = torch.tensor(0.5 * self.action_range_np, dtype=torch.float32, device=device)
+        self.action_bias = torch.tensor(self.action_bias_np, dtype=torch.float32, device=device)
+        self.log_action_scale_sum = torch.log(self.action_scale).sum()
+
+        self.buffer = PrioritizedReplayBuffer(
+            capacity=buffer_capacity,
+            alpha=PER_ALPHA,
+            beta_start=PER_BETA_START,
+            beta_end=PER_BETA_END,
+            beta_frames=PER_BETA_FRAMES,
+            n_step=self.n_step,
+            gamma=self.gamma,
+        )
+
+        actor_cls = GRUGaussianActor if self.use_gru_encoder else GaussianActor
+        critic_cls = GRUGaussianCritic if self.use_gru_encoder else GaussianCritic
+
+        actor_kwargs = {
+            "state_dim": self.state_dim,
+            "action_dim": self.action_dim,
+            "hidden_dim": self.hidden_dim,
+        }
+        critic_kwargs = {
+            "state_dim": self.state_dim,
+            "action_dim": self.action_dim,
+            "hidden_dim": self.hidden_dim,
+        }
+        if self.use_gru_encoder:
+            actor_kwargs["gru_hidden_dim"] = self.gru_hidden_dim
+            critic_kwargs["gru_hidden_dim"] = self.gru_hidden_dim
+
+        self.actor = actor_cls(**actor_kwargs).to(device)
+        self.critic1 = critic_cls(**critic_kwargs).to(device)
+        self.critic2 = critic_cls(**critic_kwargs).to(device)
+        self.critic1_target = critic_cls(**critic_kwargs).to(device)
+        self.critic2_target = critic_cls(**critic_kwargs).to(device)
+        self.critic1_target.load_state_dict(self.critic1.state_dict())
+        self.critic2_target.load_state_dict(self.critic2.state_dict())
+
+        self._init_actor_prior()
+
+        for net in (self.critic1_target, self.critic2_target):
+            for param in net.parameters():
+                param.requires_grad = False
+
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr_actor)
+        self.critic1_optimizer = torch.optim.Adam(self.critic1.parameters(), lr=lr_critic)
+        self.critic2_optimizer = torch.optim.Adam(self.critic2.parameters(), lr=lr_critic)
+
+        if target_entropy is None:
+            target_entropy = -float(self.action_dim)
+        self.target_entropy = float(target_entropy)
+        self.auto_alpha = bool(lr_alpha > 0.0)
+        self.log_alpha = torch.tensor(
+            np.log(max(init_alpha, 1e-6)),
+            dtype=torch.float32,
+            device=device,
+            requires_grad=self.auto_alpha,
+        )
+        self.alpha_optimizer = (
+            torch.optim.Adam([self.log_alpha], lr=lr_alpha)
+            if self.auto_alpha else None
+        )
+
+        self.all_rewards = []
+        self.all_final_masses = []
+        self.all_energy_costs = []
+
+    def _init_actor_prior(self):
+        # Standard SAC in this project starts interacting with the environment
+        # immediately; it does not use a separate random-action warmup policy.
+        # If the policy mean starts at zero, the squashed action maps to the
+        # middle of each physical range (e.g. Q_uf≈25), which matches the bad
+        # steady state we repeatedly observed. Bias the initial policy toward a
+        # low-flow operating prior instead.
+        if not hasattr(self.actor, "mean_head") or not hasattr(self.actor, "log_std_head"):
+            return
+
+        # If the first action dimension is signed, SAC is running with delta
+        # control on Q_uf; start from a near-zero delta prior. Otherwise bias
+        # the absolute underflow toward a modest but non-trivial draw.
+        if self.action_low_np[0] < 0.0:
+            desired_action = np.array(
+                [0.0, self.action_low_np[1] + self.action_range_np[1] * 0.07],
+                dtype=np.float32,
+            )
+        else:
+            desired_action = self.action_low_np + self.action_range_np * np.array([0.30, 0.07], dtype=np.float32)
+        desired_norm = 2.0 * (desired_action - self.action_low_np) / np.maximum(self.action_range_np, 1e-6) - 1.0
+        desired_pre_tanh = _safe_atanh(desired_norm)
+
+        with torch.no_grad():
+            nn.init.zeros_(self.actor.mean_head.weight)
+            self.actor.mean_head.bias.copy_(
+                torch.tensor(desired_pre_tanh, dtype=torch.float32, device=self.device)
+            )
+            nn.init.zeros_(self.actor.log_std_head.weight)
+            self.actor.log_std_head.bias.fill_(-2.0)
+
+    @property
+    def alpha(self) -> torch.Tensor:
+        return self.log_alpha.exp()
+
+    def _sample_action(
+        self,
+        state: torch.Tensor,
+        deterministic: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        mean, log_std = self.actor(state)
+        if deterministic:
+            z = mean
+            squashed = torch.tanh(z)
+            action = squashed * self.action_scale + self.action_bias
+            return action, None
+
+        std = log_std.exp()
+        normal = torch.distributions.Normal(mean, std)
+        z = normal.rsample()
+        squashed = torch.tanh(z)
+        action = squashed * self.action_scale + self.action_bias
+
+        log_prob = normal.log_prob(z)
+        log_prob -= torch.log(1 - squashed.pow(2) + 1e-6)
+        log_prob = log_prob.sum(dim=-1, keepdim=True)
+        log_prob -= self.log_action_scale_sum
+        return action, log_prob
+
+    def select_action(self, state: np.ndarray, deterministic: bool = False) -> np.ndarray:
+        state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
+        with torch.no_grad():
+            action, _ = self._sample_action(state_tensor, deterministic=deterministic)
+        return action.cpu().numpy()[0].astype(np.float32)
+
+    def store_transition(self, state, action, reward, next_state, done):
+        self.buffer.add(state, action, reward, next_state, done)
+
+    def update(self) -> Dict[str, float]:
+        batch = self.buffer.sample(self.batch_size, self.device)
+        if batch is None:
+            return {}
+
+        if len(batch) == 7:
+            states, actions, rewards, next_states, dones, indices, weights = batch
+        else:
+            states, actions, rewards, next_states, dones = batch
+            indices = None
+            weights = torch.ones_like(rewards)
+
+        with torch.no_grad():
+            next_actions, next_log_prob = self._sample_action(next_states, deterministic=False)
+            target_q1 = self.critic1_target(next_states, next_actions)
+            target_q2 = self.critic2_target(next_states, next_actions)
+            target_q = torch.min(target_q1, target_q2) - self.alpha.detach() * next_log_prob
+            gamma_n = self.gamma ** self.n_step
+            q_target = rewards + gamma_n * (1.0 - dones) * target_q
+
+        q1 = self.critic1(states, actions)
+        q2 = self.critic2(states, actions)
+        td_error1 = q1 - q_target
+        td_error2 = q2 - q_target
+        critic1_loss = (weights * td_error1.pow(2)).mean()
+        critic2_loss = (weights * td_error2.pow(2)).mean()
+
+        self.critic1_optimizer.zero_grad()
+        critic1_loss.backward()
+        self.critic1_optimizer.step()
+
+        self.critic2_optimizer.zero_grad()
+        critic2_loss.backward()
+        self.critic2_optimizer.step()
+
+        mean, log_std = self.actor(states)
+        new_actions, log_prob = self._sample_action(states, deterministic=False)
+        q_new = torch.min(self.critic1(states, new_actions), self.critic2(states, new_actions))
+        actor_loss = (self.alpha.detach() * log_prob - q_new).mean()
+
+        det_actions = torch.tanh(mean) * self.action_scale + self.action_bias
+        q_det = torch.min(self.critic1(states, det_actions), self.critic2(states, det_actions))
+        mean_action_loss = -q_det.mean()
+
+        std_reg_loss = log_std.exp().pow(2).mean()
+        actor_loss = (
+            actor_loss
+            + self.mean_action_q_weight * mean_action_loss
+            + self.std_reg_weight * std_reg_loss
+        )
+
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+
+        alpha_loss_value = 0.0
+        if self.auto_alpha and self.alpha_optimizer is not None:
+            alpha_loss = -(self.log_alpha * (log_prob + self.target_entropy).detach()).mean()
+            self.alpha_optimizer.zero_grad()
+            alpha_loss.backward()
+            self.alpha_optimizer.step()
+            alpha_loss_value = float(alpha_loss.item())
+
+        if indices is not None and hasattr(self.buffer, "update_priorities"):
+            td_errors = 0.5 * (td_error1.detach().abs() + td_error2.detach().abs())
+            self.buffer.update_priorities(indices, td_errors.squeeze(1).cpu().numpy())
+
+        self._soft_update(self.critic1_target, self.critic1, self.tau)
+        self._soft_update(self.critic2_target, self.critic2, self.tau)
+
+        self.update_step += 1
+
+        return {
+            "critic1_loss": float(critic1_loss.item()),
+            "critic2_loss": float(critic2_loss.item()),
+            "actor_loss": float(actor_loss.item()),
+            "mean_action_loss": float(mean_action_loss.item()),
+            "std_reg_loss": float(std_reg_loss.item()),
+            "alpha_loss": alpha_loss_value,
+            "alpha": float(self.alpha.detach().item()),
+            "buffer_size": float(self.buffer.size),
+            "per_beta": float(getattr(self.buffer, "_beta", lambda _: 1.0)(getattr(self.buffer, "frame", 1))),
+        }
+
+    @staticmethod
+    def _soft_update(target: nn.Module, source: nn.Module, tau: float):
+        for target_param, source_param in zip(target.parameters(), source.parameters()):
+            target_param.data.copy_(tau * source_param.data + (1.0 - tau) * target_param.data)
+
+    def save(self, path: str):
+        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+        torch.save(
+            {
+                "actor": self.actor.state_dict(),
+                "critic1": self.critic1.state_dict(),
+                "critic2": self.critic2.state_dict(),
+                "critic1_target": self.critic1_target.state_dict(),
+                "critic2_target": self.critic2_target.state_dict(),
+                "actor_optimizer": self.actor_optimizer.state_dict(),
+                "critic1_optimizer": self.critic1_optimizer.state_dict(),
+                "critic2_optimizer": self.critic2_optimizer.state_dict(),
+                "alpha_optimizer": self.alpha_optimizer.state_dict() if self.alpha_optimizer is not None else None,
+                "log_alpha": float(self.log_alpha.detach().item()),
+                "target_entropy": float(self.target_entropy),
+                "auto_alpha": bool(self.auto_alpha),
+                "update_step": int(self.update_step),
+                "state_dim": int(self.state_dim),
+                "hidden_dim": int(self.hidden_dim),
+                "use_gru_encoder": bool(self.use_gru_encoder),
+                "gru_hidden_dim": int(self.gru_hidden_dim),
+                "mean_action_q_weight": float(self.mean_action_q_weight),
+                "std_reg_weight": float(self.std_reg_weight),
+                "n_step": int(self.n_step),
+                "action_low": self.action_low_np,
+                "action_high": self.action_high_np,
+            },
+            path,
+        )
+        print(f"Model saved to {path}")
+
+    def load(self, path: str):
+        if not os.path.exists(path):
+            print(f"Model file not found: {path}")
+            return False
+
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        self.actor.load_state_dict(checkpoint["actor"])
+        self.critic1.load_state_dict(checkpoint["critic1"])
+        self.critic2.load_state_dict(checkpoint["critic2"])
+        self.critic1_target.load_state_dict(checkpoint.get("critic1_target", checkpoint["critic1"]))
+        self.critic2_target.load_state_dict(checkpoint.get("critic2_target", checkpoint["critic2"]))
+
+        if "actor_optimizer" in checkpoint:
+            self.actor_optimizer.load_state_dict(checkpoint["actor_optimizer"])
+        if "critic1_optimizer" in checkpoint:
+            self.critic1_optimizer.load_state_dict(checkpoint["critic1_optimizer"])
+        if "critic2_optimizer" in checkpoint:
+            self.critic2_optimizer.load_state_dict(checkpoint["critic2_optimizer"])
+        if (
+            self.auto_alpha
+            and self.alpha_optimizer is not None
+            and checkpoint.get("alpha_optimizer") is not None
+        ):
+            self.alpha_optimizer.load_state_dict(checkpoint["alpha_optimizer"])
+        if "log_alpha" in checkpoint:
+            self.log_alpha.data.copy_(
+                torch.tensor(float(checkpoint["log_alpha"]), dtype=torch.float32, device=self.device)
+            )
+        if "target_entropy" in checkpoint:
+            self.target_entropy = float(checkpoint["target_entropy"])
+
+        self.update_step = int(checkpoint.get("update_step", 0))
+        print(f"Model loaded from {path}")
+        return True
+
+    def evaluate(self, env, episodes: int = 5) -> Dict[str, float]:
+        total_rewards = []
+        final_masses = []
+        energy_costs = []
+
+        for _ in range(episodes):
+            state, _ = env.reset()
+            done = False
+            episode_reward = 0.0
+            info: Optional[dict] = None
+
+            while not done:
+                action = self.select_action(state, deterministic=True)
+                next_state, reward, terminated, truncated, info = env.step(action)
+                done = bool(terminated or truncated)
+                episode_reward += reward
+                state = next_state
+
+            info = info or {}
+            total_rewards.append(episode_reward)
+            final_masses.append(float(info.get("current_mass", info.get("final_mass", 0.0))))
+            energy_costs.append(float(info.get("total_energy_cost", 0.0)))
+
+        return {
+            "mean_reward": float(np.mean(total_rewards)),
+            "std_reward": float(np.std(total_rewards)),
+            "mean_final_mass": float(np.mean(final_masses)),
+            "mean_energy_cost": float(np.mean(energy_costs)),
+        }

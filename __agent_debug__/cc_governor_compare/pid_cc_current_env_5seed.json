@@ -1,0 +1,85 @@
+{
+  "controller": "dual_loop_pid",
+  "mode": "CC",
+  "target": 400.0,
+  "steps": 288,
+  "interval": 5,
+  "summary": {
+    "n": 5,
+    "reward_mean": -201549.1010860877,
+    "reward_std": 144.24840508026077,
+    "mass_mean": 400.1555904060089,
+    "mass_std": 0.09879159509586254,
+    "energy_mean": 582.8446483506192,
+    "energy_std": 0.09379053979128933,
+    "eei_mean": 582.8446483506192,
+    "unsafe_steps_mean": 0.0,
+    "zero_unsafe_rate": 1.0,
+    "completion_rate": 1.0,
+    "inband_rate": 1.0,
+    "switch_count_mean": 39.0,
+    "action_delta_mean": 1.758244800567627
+  },
+  "per_seed": {
+    "91": {
+      "reward": -201440.77839985097,
+      "final_mass": 400.083901182518,
+      "energy_cost": 582.685310169452,
+      "eei": 582.685310169452,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.7495707273483276
+    },
+    "92": {
+      "reward": -201440.7490188617,
+      "final_mass": 400.0293249827973,
+      "energy_cost": 582.8043252660723,
+      "eei": 582.8043252660723,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.7568706274032593
+    },
+    "93": {
+      "reward": -201621.48332144017,
+      "final_mass": 400.2983248428514,
+      "energy_cost": 582.8727758603228,
+      "eei": 582.8727758603228,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.7642724514007568
+    },
+    "94": {
+      "reward": -201801.4065575487,
+      "final_mass": 400.23713954687366,
+      "energy_cost": 582.9574859519153,
+      "eei": 582.9574859519153,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.7707139253616333
+    },
+    "95": {
+      "reward": -201441.08813273706,
+      "final_mass": 400.12926147500406,
+      "energy_cost": 582.9033445053338,
+      "eei": 582.9033445053338,
+      "safety_violations": 0.0,
+      "unsafe_steps": 0.0,
+      "completion": 1.0,
+      "inband": 1.0,
+      "switch_count": 39.0,
+      "action_delta_mean": 1.7497962713241577
+    }
+  }
+}

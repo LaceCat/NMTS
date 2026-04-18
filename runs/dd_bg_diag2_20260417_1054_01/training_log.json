@@ -1,0 +1,62 @@
+{
+  "epochs": [
+    {
+      "epoch": 1,
+      "avg_reward": -9.285080482180728,
+      "avg_mass": 52.509195178192726,
+      "avg_energy": 72.68000000000004,
+      "avg_safety_violations": 0.0,
+      "unsafe_episode_rate": 0.0,
+      "unsafe_step_rate": 0.0,
+      "stage": "stage1",
+      "stage_label": "S1-SAFE",
+      "stage_target_enabled": false,
+      "stage_target_mass": 400.0,
+      "completion_rate": 0.0,
+      "pass_rate": 0.0,
+      "avg_target_band_distance": 0.0,
+      "final_completion_rate": 0.0,
+      "final_pass_rate": 0.0,
+      "final_target_band_distance": 347.4908048218073,
+      "best_reward": -9.285080482180728,
+      "algo": "td3",
+      "elapsed": 0.1092832088470459,
+      "eta_seconds": 0.0941317081451416
+    },
+    {
+      "epoch": 2,
+      "avg_reward": -6.297915368264558,
+      "avg_mass": 28.100846317354435,
+      "avg_energy": 45.539999999999985,
+      "avg_safety_violations": 0.0,
+      "unsafe_episode_rate": 0.0,
+      "unsafe_step_rate": 0.0,
+      "stage": "stage1",
+      "stage_label": "S1-SAFE",
+      "stage_target_enabled": false,
+      "stage_target_mass": 400.0,
+      "completion_rate": 0.0,
+      "pass_rate": 0.0,
+      "avg_target_band_distance": 0.0,
+      "final_completion_rate": 0.0,
+      "final_pass_rate": 0.0,
+      "final_target_band_distance": 371.8991536826456,
+      "best_reward": -6.297915368264558,
+      "algo": "td3",
+      "elapsed": 0.13716530799865723,
+      "eta_seconds": 0.0
+    }
+  ],
+  "all_rewards": [
+    -9.285080482180728,
+    -6.297915368264558
+  ],
+  "all_masses": [
+    52.509195178192726,
+    28.100846317354435
+  ],
+  "all_energy": [
+    72.68000000000004,
+    45.539999999999985
+  ]
+}
