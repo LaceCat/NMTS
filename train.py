@@ -180,7 +180,7 @@ def parse_args():
         "--sac_deterministic_mix_prob",
         type=float,
         default=-1.0,
-        help="During SAC training, probability of executing the deterministic mean action after warmup. <0 uses the SAC default.",
+        help="During SAC training, probability of executing the deterministic mean action after warmup. <0 uses the SAC default (0.0 for the standard SAC baseline).",
     )
     parser.add_argument(
         "--sac_n_step",
@@ -274,7 +274,7 @@ def parse_args():
     if args.algo.lower() == "sac" and "--q_fp_delta_max" not in sys.argv:
         args.q_fp_delta_max = 12.0
     if args.algo.lower() == "sac" and "--sac_deterministic_mix_prob" not in sys.argv:
-        args.sac_deterministic_mix_prob = 0.25
+        args.sac_deterministic_mix_prob = 0.0
     if args.algo.lower() == "sac" and "--sac_n_step" not in sys.argv:
         args.sac_n_step = 1
     if args.algo.lower() == "sac" and "--eval_episodes" not in sys.argv:
