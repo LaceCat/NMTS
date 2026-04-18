@@ -87,6 +87,23 @@ def parse_args():
         help="Per-decision maximum change of Q_fp in CC mode. <0 disables the rate limit.",
     )
     parser.add_argument(
+        "--disable_low_buffer_fp_guard",
+        action="store_true",
+        help="Disable the hard guard that limits or shuts Q_fp when the buffer volume is too low.",
+    )
+    parser.add_argument(
+        "--low_buffer_fp_threshold",
+        type=float,
+        default=0.8,
+        help="Buffer-volume threshold below which the hard low-buffer Q_fp guard is active.",
+    )
+    parser.add_argument(
+        "--low_buffer_fp_max",
+        type=float,
+        default=0.0,
+        help="Maximum allowed Q_fp under the hard low-buffer guard.",
+    )
+    parser.add_argument(
         "--interval",
         type=int,
         default=DEFAULT_DECISION_INTERVAL,
@@ -351,6 +368,9 @@ def main():
         pricing=PricingPresets.daily_24h(),
         reward_config=reward_config,
         enable_post_target_fp_governor=not args.disable_post_target_fp_governor,
+        enable_low_buffer_fp_guard=not args.disable_low_buffer_fp_guard,
+        low_buffer_fp_threshold=args.low_buffer_fp_threshold,
+        low_buffer_fp_max=args.low_buffer_fp_max,
     )
 
     agent, needs_adapt, select_action_adapted = build_agent_and_adapter(args, env)

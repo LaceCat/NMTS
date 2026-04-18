@@ -64,6 +64,9 @@ class ThickenerDewateringEnv(gym.Env):
         fp_downtime_minutes: int = FP_DOWNTIME_MINUTES,
         enable_post_target_fp_governor: bool = True,
         post_target_fp_guard_level: float = 24.0,
+        enable_low_buffer_fp_guard: bool = True,
+        low_buffer_fp_threshold: float = 0.8,
+        low_buffer_fp_max: float = 0.0,
     ):
         super().__init__()
 
@@ -77,6 +80,9 @@ class ThickenerDewateringEnv(gym.Env):
         self.fp_downtime_minutes = int(max(fp_downtime_minutes, 1))
         self.enable_post_target_fp_governor = bool(enable_post_target_fp_governor)
         self.post_target_fp_guard_level = float(max(post_target_fp_guard_level, 1e-6))
+        self.enable_low_buffer_fp_guard = bool(enable_low_buffer_fp_guard)
+        self.low_buffer_fp_threshold = float(max(low_buffer_fp_threshold, 0.0))
+        self.low_buffer_fp_max = float(np.clip(low_buffer_fp_max, 0.0, 70.0))
         self.mode = str(mode).upper()
         if self.mode not in self.VALID_ACTION_MODES:
             raise ValueError(f"Unsupported action mode: {mode}. Expected one of {self.VALID_ACTION_MODES}.")
@@ -153,6 +159,7 @@ class ThickenerDewateringEnv(gym.Env):
         self.fp_total_cycles = 0
         self.last_fp_batch_triggered = False
         self.last_post_target_fp_governed = False
+        self.last_low_buffer_fp_guarded = False
 
     def _build_physical_action_space(self):
         if self.mode == "DD":
@@ -292,6 +299,24 @@ class ThickenerDewateringEnv(gym.Env):
             return float(q_fp), False
         return 0.0, bool(q_fp > 1e-6)
 
+    def _apply_low_buffer_fp_guard(self, q_fp: float) -> Tuple[float, bool]:
+        """
+        Hard safety/equipment guard for near-empty buffer operation.
+
+        When the buffer volume is already very low, allowing the policy to keep
+        commanding the filter press produces repeated dry-run minutes that are
+        easy for SAC to stumble into during exploration. This guard only clips
+        Q_fp in that narrow region and leaves the rest of the trajectory to the
+        policy.
+        """
+        if not self.enable_low_buffer_fp_guard:
+            return float(q_fp), False
+        if self.v_buf >= self.low_buffer_fp_threshold:
+            return float(q_fp), False
+
+        guarded_q_fp = float(min(max(q_fp, 0.0), self.low_buffer_fp_max))
+        return guarded_q_fp, bool(guarded_q_fp + 1e-6 < float(q_fp))
+
     def reset(self, seed: Optional[int] = None, options=None):
         super().reset(seed=seed)
         if seed is not None:
@@ -358,6 +383,7 @@ class ThickenerDewateringEnv(gym.Env):
         applied_q_fp_sum = 0.0
         batch_triggered_this_step = False
         post_target_governed_minutes = 0
+        low_buffer_guarded_minutes = 0
 
         # 执行物理模拟 (不终止，记录安全违规)
         total_energy_cost = 0.0
@@ -371,13 +397,26 @@ class ThickenerDewateringEnv(gym.Env):
         minutes_this_step = min(self.decision_interval, minutes_left)
 
         for _ in range(minutes_this_step):
-            step_energy, is_safe, violations, c_uf, effective_q_fp, batch_triggered, dry_run_now, low_conc_now, post_target_governed_now = self._step_minute_physics()
+            (
+                step_energy,
+                is_safe,
+                violations,
+                c_uf,
+                effective_q_fp,
+                batch_triggered,
+                dry_run_now,
+                low_conc_now,
+                post_target_governed_now,
+                low_buffer_guarded_now,
+            ) = self._step_minute_physics()
             total_energy_cost += step_energy
             final_c_uf = c_uf
             applied_q_fp_sum += effective_q_fp
             batch_triggered_this_step = batch_triggered_this_step or batch_triggered
             if post_target_governed_now:
                 post_target_governed_minutes += 1
+            if low_buffer_guarded_now:
+                low_buffer_guarded_minutes += 1
             if dry_run_now:
                 dry_run_minutes += 1
             if low_conc_now:
@@ -389,6 +428,7 @@ class ThickenerDewateringEnv(gym.Env):
         avg_applied_q_fp = applied_q_fp_sum / max(minutes_this_step, 1)
         self.last_fp_batch_triggered = batch_triggered_this_step
         self.last_post_target_fp_governed = bool(post_target_governed_minutes > 0)
+        self.last_low_buffer_fp_guarded = bool(low_buffer_guarded_minutes > 0)
 
         delta_m_fp = self.m_fp - prev_m_fp
         is_safe = (safety_violations == 0)
@@ -489,6 +529,8 @@ class ThickenerDewateringEnv(gym.Env):
             "fp_batch_triggered": bool(batch_triggered_this_step),
             "post_target_fp_governed": bool(post_target_governed_minutes > 0),
             "post_target_fp_governed_minutes": int(post_target_governed_minutes),
+            "low_buffer_fp_guarded": bool(low_buffer_guarded_minutes > 0),
+            "low_buffer_fp_guarded_minutes": int(low_buffer_guarded_minutes),
         }
 
         if self.verbose:
@@ -506,6 +548,7 @@ class ThickenerDewateringEnv(gym.Env):
     def _step_minute_physics(self):
         effective_q_fp = 0.0 if (self.enable_fp_batching and self.fp_busy) else self.Q_fp
         effective_q_fp, post_target_governed_now = self._apply_post_target_fp_governor(effective_q_fp)
+        effective_q_fp, low_buffer_guarded_now = self._apply_low_buffer_fp_guard(effective_q_fp)
         prev_m_fp = self.m_fp
         c_uf_floor, self.thickener_state = self.thickener.step(
             self.Q_uf, self.Qf, self.Cf, self.thickener_state
@@ -541,4 +584,15 @@ class ThickenerDewateringEnv(gym.Env):
         batch_triggered = self._update_fp_batch_state(delta_m_fp)
         self.timecnt += 1
 
-        return energy_cost, is_safe, violations, c_uf, effective_q_fp, batch_triggered, dry_run_now, low_conc_now, post_target_governed_now
+        return (
+            energy_cost,
+            is_safe,
+            violations,
+            c_uf,
+            effective_q_fp,
+            batch_triggered,
+            dry_run_now,
+            low_conc_now,
+            post_target_governed_now,
+            low_buffer_guarded_now,
+        )

@@ -189,6 +189,23 @@ def parse_args():
         help="n-step return horizon for SAC. <0 uses the SAC default.",
     )
     parser.add_argument(
+        "--sac_per_alpha",
+        type=float,
+        default=-1.0,
+        help="Prioritized replay alpha for SAC. <=0 disables PER and uses uniform replay.",
+    )
+    parser.add_argument(
+        "--sac_reward_scale",
+        type=float,
+        default=-1.0,
+        help="Reward scaling factor applied before SAC stores transitions. <0 uses the SAC default.",
+    )
+    parser.add_argument(
+        "--enable_sac_actor_prior",
+        action="store_true",
+        help="Enable the handcrafted SAC actor bias prior. Disabled by default for the clean SAC baseline.",
+    )
+    parser.add_argument(
         "--sac_dry_run_penalty",
         type=float,
         default=-1.0,
@@ -259,7 +276,7 @@ def parse_args():
     if args.algo.lower() == "sac" and "--sac_deterministic_mix_prob" not in sys.argv:
         args.sac_deterministic_mix_prob = 0.25
     if args.algo.lower() == "sac" and "--sac_n_step" not in sys.argv:
-        args.sac_n_step = 3
+        args.sac_n_step = 1
     if args.algo.lower() == "sac" and "--eval_episodes" not in sys.argv:
         args.eval_episodes = 1
     return args
@@ -637,6 +654,9 @@ def _evaluate_agent_policy(args, agent, stage: dict, episodes: int, seed_base: i
         pricing=PricingPresets.daily_24h(),
         reward_config=eval_reward_config,
         enable_post_target_fp_governor=not args.disable_post_target_fp_governor,
+        enable_low_buffer_fp_guard=not args.disable_low_buffer_fp_guard,
+        low_buffer_fp_threshold=args.low_buffer_fp_threshold,
+        low_buffer_fp_max=args.low_buffer_fp_max,
     )
 
     rewards = []
@@ -1213,6 +1233,9 @@ def _build_agent(args, state_dim: int, action_dim: int, action_low=None, action_
             mean_action_q_weight=args.sac_mean_q_weight,
             std_reg_weight=args.sac_std_reg_weight,
             n_step=(args.sac_n_step if args.sac_n_step > 0 else 1),
+            per_alpha=(args.sac_per_alpha if args.sac_per_alpha >= 0 else 0.0),
+            reward_scale=(args.sac_reward_scale if args.sac_reward_scale >= 0 else 0.01),
+            use_actor_prior=args.enable_sac_actor_prior,
             device=args.device,
         )
         algo_name = "GRU-SAC (CC)" if args.use_gru_encoder else "SAC (CC)"
@@ -1328,6 +1351,9 @@ def train():
         pricing=PricingPresets.daily_24h(),
         reward_config=reward_config,
         enable_post_target_fp_governor=not args.disable_post_target_fp_governor,
+        enable_low_buffer_fp_guard=not args.disable_low_buffer_fp_guard,
+        low_buffer_fp_threshold=args.low_buffer_fp_threshold,
+        low_buffer_fp_max=args.low_buffer_fp_max,
     )
 
     agent, algo_name = _build_agent(
@@ -1359,12 +1385,19 @@ def train():
     logger.info(
         f"Post-target FP governor: {'off' if args.disable_post_target_fp_governor else 'on'}"
     )
+    logger.info(
+        f"Low-buffer FP guard: {'off' if args.disable_low_buffer_fp_guard else 'on'}"
+    )
     if args.mode != "DD":
         logger.info(f"Q_uf control: {args.uf_control_mode}")
         if args.uf_control_mode == "delta":
             logger.info(f"Q_uf delta max: ±{args.uf_delta_max}")
         if args.q_fp_delta_max >= 0:
             logger.info(f"Q_fp delta max: ±{args.q_fp_delta_max}")
+        if not args.disable_low_buffer_fp_guard:
+            logger.info(
+                f"Low-buffer guard threshold/max: {args.low_buffer_fp_threshold} m3 / {args.low_buffer_fp_max} m3/h"
+            )
     logger.info(f"Target band (descriptive only): {reward_config.target_mass_low:.1f} ~ {reward_config.target_mass_high:.1f} t")
     if args.curriculum == "none":
         logger.info("Curriculum: none")
@@ -1399,6 +1432,10 @@ def train():
         logger.info(f"SAC mean-Q weight: {args.sac_mean_q_weight}")
         logger.info(f"SAC std-reg weight: {args.sac_std_reg_weight}")
         logger.info(f"SAC deterministic-mix prob: {args.sac_deterministic_mix_prob}")
+        logger.info(f"SAC n-step: {args.sac_n_step if args.sac_n_step > 0 else 1}")
+        logger.info(f"SAC PER alpha: {args.sac_per_alpha if args.sac_per_alpha >= 0 else 0.0}")
+        logger.info(f"SAC reward scale: {args.sac_reward_scale if args.sac_reward_scale >= 0 else 0.01}")
+        logger.info(f"SAC actor prior: {'on' if args.enable_sac_actor_prior else 'off'}")
     if torch.cuda.is_available():
         logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
     if start_epoch > 1:

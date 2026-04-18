@@ -28,16 +28,17 @@ LR_CRITIC = 3e-4
 LR_ALPHA = 3e-4
 INIT_ALPHA = 0.2
 LOG_STD_MIN = -20.0
-LOG_STD_MAX = -0.75
+LOG_STD_MAX = 2.0
 MEAN_ACTION_Q_WEIGHT = 0.35
 STD_REG_WEIGHT = 0.02
 ACTION_BOUNDS_LOW = np.array([0.0, 0.0], dtype=np.float32)
 ACTION_BOUNDS_HIGH = np.array([50.0, 70.0], dtype=np.float32)
-PER_ALPHA = 0.6
+PER_ALPHA = 0.0
 PER_BETA_START = 0.4
 PER_BETA_END = 1.0
 PER_BETA_FRAMES = 100000
-N_STEP = 3
+N_STEP = 1
+REWARD_SCALE = 0.01
 
 
 def _safe_atanh(x: np.ndarray) -> np.ndarray:
@@ -166,6 +167,9 @@ class SACAgent:
         mean_action_q_weight: float = MEAN_ACTION_Q_WEIGHT,
         std_reg_weight: float = STD_REG_WEIGHT,
         n_step: int = N_STEP,
+        per_alpha: float = PER_ALPHA,
+        reward_scale: float = REWARD_SCALE,
+        use_actor_prior: bool = False,
         device: str = "cpu",
     ):
         self.state_dim = int(state_dim)
@@ -180,6 +184,9 @@ class SACAgent:
         self.mean_action_q_weight = float(mean_action_q_weight)
         self.std_reg_weight = float(std_reg_weight)
         self.n_step = max(int(n_step), 1)
+        self.per_alpha = float(per_alpha)
+        self.reward_scale = float(reward_scale)
+        self.use_actor_prior = bool(use_actor_prior)
         self.update_step = 0
 
         self.action_low_np = (
@@ -199,15 +206,18 @@ class SACAgent:
         self.action_bias = torch.tensor(self.action_bias_np, dtype=torch.float32, device=device)
         self.log_action_scale_sum = torch.log(self.action_scale).sum()
 
-        self.buffer = PrioritizedReplayBuffer(
-            capacity=buffer_capacity,
-            alpha=PER_ALPHA,
-            beta_start=PER_BETA_START,
-            beta_end=PER_BETA_END,
-            beta_frames=PER_BETA_FRAMES,
-            n_step=self.n_step,
-            gamma=self.gamma,
-        )
+        if self.per_alpha > 0.0:
+            self.buffer = PrioritizedReplayBuffer(
+                capacity=buffer_capacity,
+                alpha=self.per_alpha,
+                beta_start=PER_BETA_START,
+                beta_end=PER_BETA_END,
+                beta_frames=PER_BETA_FRAMES,
+                n_step=self.n_step,
+                gamma=self.gamma,
+            )
+        else:
+            self.buffer = ReplayBuffer(capacity=buffer_capacity)
 
         actor_cls = GRUGaussianActor if self.use_gru_encoder else GaussianActor
         critic_cls = GRUGaussianCritic if self.use_gru_encoder else GaussianCritic
@@ -234,7 +244,8 @@ class SACAgent:
         self.critic1_target.load_state_dict(self.critic1.state_dict())
         self.critic2_target.load_state_dict(self.critic2.state_dict())
 
-        self._init_actor_prior()
+        if self.use_actor_prior:
+            self._init_actor_prior()
 
         for net in (self.critic1_target, self.critic2_target):
             for param in net.parameters():
@@ -329,7 +340,8 @@ class SACAgent:
         return action.cpu().numpy()[0].astype(np.float32)
 
     def store_transition(self, state, action, reward, next_state, done):
-        self.buffer.add(state, action, reward, next_state, done)
+        scaled_reward = float(reward) * self.reward_scale
+        self.buffer.add(state, action, scaled_reward, next_state, done)
 
     def update(self) -> Dict[str, float]:
         batch = self.buffer.sample(self.batch_size, self.device)
@@ -444,6 +456,9 @@ class SACAgent:
                 "mean_action_q_weight": float(self.mean_action_q_weight),
                 "std_reg_weight": float(self.std_reg_weight),
                 "n_step": int(self.n_step),
+                "per_alpha": float(self.per_alpha),
+                "reward_scale": float(self.reward_scale),
+                "use_actor_prior": bool(self.use_actor_prior),
                 "action_low": self.action_low_np,
                 "action_high": self.action_high_np,
             },
