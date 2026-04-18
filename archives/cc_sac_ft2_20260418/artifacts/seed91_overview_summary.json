@@ -1,0 +1,17 @@
+{
+  "checkpoint": "F:\\毕设\\claude-code\\runs\\sac_cc_v2_crossbonus_multiseed_ft2\\checkpoints\\best_model.pth",
+  "algo": "sac",
+  "mode": "CC",
+  "seed": 91,
+  "final_mass": 400.3359680175781,
+  "final_total_energy_cost": 550.4555075726291,
+  "max_c_uf": 0.7343220710754395,
+  "max_v_buf": 20.328638076782227,
+  "unsafe_steps": 0,
+  "dry_run_steps": 0,
+  "low_conc_steps": 3,
+  "low_buffer_guard_steps": 77,
+  "fp_total_cycles": 20,
+  "png": "F:\\毕设\\claude-code\\plots\\current_model_overview\\sac_cc_best_model_seed91_overview.png",
+  "csv": "F:\\毕设\\claude-code\\plots\\current_model_overview\\sac_cc_best_model_seed91_overview.csv"
+}

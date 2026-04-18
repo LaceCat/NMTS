@@ -99,6 +99,11 @@ class RewardConfig:
     # from a binary threshold-style penalty.
     uf_conc_guidance_target: float = 0.68
     uf_conc_guidance_band: float = 0.02
+    uf_conc_guidance_start_ratio: float = 0.0
+    # Use a separate upper soft limit so the controller can operate above the
+    # nominal target concentration without being punished immediately, while
+    # still receiving a clear warning before the hard unsafe limit at 0.75.
+    uf_conc_guidance_upper_soft_limit: float = 0.68
     uf_conc_guidance_below_weight: float = 0.0
     uf_conc_guidance_above_weight: float = 0.0
     uf_conc_guidance_band_bonus: float = 0.0

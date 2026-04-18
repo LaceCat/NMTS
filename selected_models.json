@@ -1,11 +1,16 @@
 {
   "continuous_model": {
-    "name": "CC-TD3 with terminal governor",
+    "name": "CC-SAC ft2 (crossbonus + multiseed)",
     "mode": "CC",
-    "algo": "td3",
-    "checkpoint": "F:\\毕设\\claude-code\\runs\\cc_batch_dryrun_lowconc_probe_v2scan\\checkpoints\\selected_epoch9_balanced.pth",
-    "post_target_fp_governor": true,
-    "selection_reason": "Current official continuous-control model. Chosen under the principle: no unsafe first, then lower energy, with 400 t treated as a task constraint.",
+    "algo": "sac",
+    "checkpoint": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\checkpoint\\best_model.pth",
+    "source_run": "F:\\毕设\\claude-code\\runs\\sac_cc_v2_crossbonus_multiseed_ft2",
+    "uf_control_mode": "delta",
+    "uf_delta_max": 3.0,
+    "q_fp_delta_max": 12.0,
+    "post_target_fp_governor": false,
+    "low_buffer_fp_guard": true,
+    "selection_reason": "Current official continuous-control SAC model. Chosen under the principle: zero unsafe first, then stable >=400 t across seeds, while keeping energy low.",
     "evaluation_summary_5seeds": {
       "seeds": [
         91,
@@ -14,18 +19,20 @@
         94,
         95
       ],
-      "mass_mean": 400.5395921718866,
-      "mass_std": 0.2743879647193213,
-      "energy_mean": 672.7693813421272,
-      "energy_std": 7.174202477825119,
-      "zero_unsafe_rate": 1.0,
+      "mass_mean": 400.12752976220884,
+      "mass_std": 0.12046735559535153,
+      "energy_mean": 550.7393707469915,
+      "energy_std": 2.073678261756116,
+      "reward_mean": 308.1216300954301,
+      "pass_rate": 1.0,
       "inband_rate": 1.0
     },
     "representative_rollout": {
       "seed": 91,
-      "png": "F:\\毕设\\claude-code\\__agent_debug__\\cc_selected_epoch9_governed_timeseries\\cc_selected_epoch9_balanced_seed91_timeseries.png",
-      "csv": "F:\\毕设\\claude-code\\__agent_debug__\\cc_selected_epoch9_governed_timeseries\\cc_selected_epoch9_balanced_seed91_timeseries.csv",
-      "summary_json": "F:\\毕设\\claude-code\\__agent_debug__\\cc_selected_epoch9_governed_timeseries\\cc_selected_epoch9_balanced_seed91_summary.json"
+      "png": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\artifacts\\seed91_overview.png",
+      "csv": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\artifacts\\seed91_overview.csv",
+      "summary_json": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\artifacts\\seed91_overview_summary.json",
+      "gif": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\artifacts\\seed91_playback.gif"
     }
   }
 }

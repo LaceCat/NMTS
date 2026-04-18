@@ -229,6 +229,18 @@ def parse_args():
         default=-1.0,
         help="Override SAC low-concentration underflow-flow penalty when >= 0.",
     )
+    parser.add_argument(
+        "--sac_energy_cost_weight",
+        type=float,
+        default=-1.0,
+        help="Override SAC reward energy-cost weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_smoothness_weight",
+        type=float,
+        default=-1.0,
+        help="Override SAC action-smoothness penalty weight when >= 0.",
+    )
 
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
@@ -278,7 +290,10 @@ def parse_args():
     if args.algo.lower() == "sac" and "--sac_n_step" not in sys.argv:
         args.sac_n_step = 1
     if args.algo.lower() == "sac" and "--eval_episodes" not in sys.argv:
-        args.eval_episodes = 1
+        # Use a small multi-seed deterministic evaluation by default so the
+        # selected checkpoint reflects cross-seed robustness instead of a
+        # single lucky seed.
+        args.eval_episodes = 3
     return args
 
 
@@ -904,6 +919,7 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
             config.dry_run_flow_penalty_weight = 50.0
             config.uf_low_conc_flow_penalty_weight = 80.0
             config.constraint_step_reward_block = True
+            config.target_cross_bonus = 25.0
         config.uf_conc_penalty = 350.0
         config.buffer_vol_penalty = 350.0
         config.safety_violation_penalty = 1000.0
@@ -941,9 +957,24 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
             config.post_target_delta_penalty_weight = 12.0
             config.energy_cost_weight = 0.30
             config.uf_conc_low_penalty = 60.0
+            # Keep late-stage concentration guidance disabled by default.
+            # Concentration-lifting probes are still supported through the
+            # reward code, but the stable SAC baseline should not spend
+            # throughput budget chasing a higher C_uf automatically.
+            config.uf_conc_guidance_target = 0.68
+            config.uf_conc_guidance_band = 0.02
+            config.uf_conc_guidance_start_ratio = 0.0
+            config.uf_conc_guidance_upper_soft_limit = 0.68
+            config.uf_conc_guidance_below_weight = 0.0
+            config.uf_conc_guidance_above_weight = 0.0
+            config.uf_conc_guidance_band_bonus = 0.0
             config.dry_run_flow_penalty_weight = 70.0
             config.uf_low_conc_flow_penalty_weight = 120.0
             config.constraint_step_reward_block = True
+            # A small crossing bonus helps the energy-efficient SAC policy stop
+            # treating 399.x t as "good enough" while keeping the overall
+            # economic pressure unchanged.
+            config.target_cross_bonus = 60.0
         config.dry_run_buffer_threshold = 0.5
         config.dry_run_penalty = 140.0 if is_sac else 200.0
         config.uf_conc_penalty = 450.0
@@ -952,7 +983,7 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
         config.terminal_safety_block_penalty = 1800.0
         config.terminal_target_band_bonus = 200.0 if is_sac else 2200.0
         config.terminal_inband_over_penalty_weight = 1.5 if is_sac else 4.0
-        config.terminal_under_penalty_weight = 15.0 if is_sac else 30.0
+        config.terminal_under_penalty_weight = 20.0 if is_sac else 30.0
         config.terminal_under_penalty_quadratic = 0.0
         config.terminal_over_penalty_weight = 12.0 if is_sac else 35.0
         config.terminal_over_penalty_quadratic = 0.0
@@ -968,6 +999,10 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
             config.dry_run_flow_penalty_weight = float(args.sac_dry_run_flow_penalty)
         if args.sac_uf_low_conc_flow_penalty >= 0.0:
             config.uf_low_conc_flow_penalty_weight = float(args.sac_uf_low_conc_flow_penalty)
+        if args.sac_energy_cost_weight >= 0.0:
+            config.energy_cost_weight = float(args.sac_energy_cost_weight)
+        if args.sac_smoothness_weight >= 0.0:
+            config.smoothness_weight = float(args.sac_smoothness_weight)
 
     return config
 
@@ -1002,10 +1037,10 @@ def _best_model_key_for_stage(
         return (
             float(unsafe_step_rate),
             float(unsafe_episode_rate),
-            medium_constraint_rate,
             -float(completion_rate),
-            float(avg_energy),
             float(avg_target_band_distance),
+            medium_constraint_rate,
+            float(avg_energy),
             -float(avg_reward),
         )
 

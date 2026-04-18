@@ -4,34 +4,42 @@ This file records the currently adopted models for the thesis workflow so we do 
 
 ## Continuous Model
 
-- Official choice: `CC-TD3 with terminal governor`
-- Checkpoint: [selected_epoch9_balanced.pth](/F:/毕设/claude-code/runs/cc_batch_dryrun_lowconc_probe_v2scan/checkpoints/selected_epoch9_balanced.pth)
-- Environment behavior: terminal governor enabled by default in [gym_env.py](/F:/毕设/claude-code/env/gym_env.py)
+- Official choice: `CC-SAC ft2 (crossbonus + multiseed)`
+- Archived checkpoint: [best_model.pth](/F:/毕设/claude-code/archives/cc_sac_ft2_20260418/checkpoint/best_model.pth)
+- Source run: [sac_cc_v2_crossbonus_multiseed_ft2](/F:/毕设/claude-code/runs/sac_cc_v2_crossbonus_multiseed_ft2)
+- Environment behavior:
+  `uf_control_mode=delta`, `uf_delta_max=3.0`, `q_fp_delta_max=12`, `post_target_fp_governor=off`, `low_buffer_fp_guard=on`
 
 ### Why this one
 
 - It satisfies the agreed priority:
-  1. no `unsafe`
-  2. lower energy
-  3. `400 t` is a task constraint rather than the top optimization target
-- It is currently the selected continuous-control model for all CC demonstrations, plots, and later thesis comparisons unless explicitly overridden.
+  1. `unsafe = 0`
+  2. `final_mass >= 400 t` across seeds
+  3. energy remains low without giving up robustness
+- It is the current SAC continuous-control baseline to be used for demonstrations, plots, and later thesis comparison unless explicitly overridden.
 
 ### 5-seed evaluation summary
 
-Source: [cc_governor_compare.json](/F:/毕设/claude-code/__agent_debug__/cc_governor_compare/cc_governor_compare.json)
+Source: [eval_result_5seeds.json](/F:/毕设/claude-code/archives/cc_sac_ft2_20260418/eval_result_5seeds.json)
 
 - Seeds: `91-95`
-- Mean final mass: `400.54 +- 0.27 t`
-- Mean energy: `672.77 +- 7.17`
-- `zero_unsafe_rate = 100%`
-- `inband_rate = 100%`
+- Mean final mass: `400.13 +- 0.12 t`
+- Mean energy: `550.74 +- 2.07`
+- `pass_rate (>=400t) = 100%`
+- `in-band rate (400~420t) = 100%`
 
-### Representative process playback
+### Representative process overview
 
-- PNG: [cc_selected_epoch9_balanced_seed91_timeseries.png](/F:/毕设/claude-code/__agent_debug__/cc_selected_epoch9_governed_timeseries/cc_selected_epoch9_balanced_seed91_timeseries.png)
-- CSV: [cc_selected_epoch9_balanced_seed91_timeseries.csv](/F:/毕设/claude-code/__agent_debug__/cc_selected_epoch9_governed_timeseries/cc_selected_epoch9_balanced_seed91_timeseries.csv)
-- Summary: [cc_selected_epoch9_balanced_seed91_summary.json](/F:/毕设/claude-code/__agent_debug__/cc_selected_epoch9_governed_timeseries/cc_selected_epoch9_balanced_seed91_summary.json)
+- PNG: [seed91_overview.png](/F:/毕设/claude-code/archives/cc_sac_ft2_20260418/artifacts/seed91_overview.png)
+- CSV: [seed91_overview.csv](/F:/毕设/claude-code/archives/cc_sac_ft2_20260418/artifacts/seed91_overview.csv)
+- Summary: [seed91_overview_summary.json](/F:/毕设/claude-code/archives/cc_sac_ft2_20260418/artifacts/seed91_overview_summary.json)
 
-### Convenience
+### Representative playback
 
-- [plot_model_rollout_timeseries.py](/F:/毕设/claude-code/plot_model_rollout_timeseries.py) now defaults to this checkpoint, so later CC rollout plots will use the selected continuous model unless a different checkpoint is passed manually.
+- GIF: [seed91_playback.gif](/F:/毕设/claude-code/archives/cc_sac_ft2_20260418/artifacts/seed91_playback.gif)
+
+### Archive contents
+
+- Archive root: [cc_sac_ft2_20260418](/F:/毕设/claude-code/archives/cc_sac_ft2_20260418)
+- Run config: [run_config.json](/F:/毕设/claude-code/archives/cc_sac_ft2_20260418/run_config.json)
+- Training log: [training_log.json](/F:/毕设/claude-code/archives/cc_sac_ft2_20260418/training_log.json)

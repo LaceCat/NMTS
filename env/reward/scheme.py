@@ -15,6 +15,36 @@ from typing import Dict, Tuple
 import numpy as np
 
 
+def _compute_concentration_guidance_reward(rc, c_uf: float, episode_step: int, max_steps: int) -> float:
+    if (
+        rc.uf_conc_guidance_below_weight <= 0.0
+        and rc.uf_conc_guidance_above_weight <= 0.0
+        and rc.uf_conc_guidance_band_bonus == 0.0
+    ):
+        return 0.0
+
+    start_ratio = float(np.clip(getattr(rc, "uf_conc_guidance_start_ratio", 0.0), 0.0, 1.0))
+    if max_steps > 0 and episode_step < start_ratio * max_steps:
+        return 0.0
+
+    target = float(rc.uf_conc_guidance_target)
+    band = max(float(rc.uf_conc_guidance_band), 0.0)
+    upper_soft_limit = max(float(getattr(rc, "uf_conc_guidance_upper_soft_limit", target)), target)
+    below_gap = max(target - c_uf, 0.0)
+    above_gap = max(c_uf - upper_soft_limit, 0.0)
+
+    reward = 0.0
+    reward -= rc.uf_conc_guidance_below_weight * (below_gap ** 2)
+    reward -= rc.uf_conc_guidance_above_weight * (above_gap ** 2)
+    if band > 0.0:
+        distance = abs(c_uf - target)
+        if distance <= band:
+            reward += rc.uf_conc_guidance_band_bonus * (1.0 - distance / band)
+    elif c_uf == target:
+        reward += rc.uf_conc_guidance_band_bonus
+    return float(reward)
+
+
 class RewardScheme:
     """Compute shaped rewards for training."""
 
@@ -61,6 +91,7 @@ class RewardScheme:
             progress_reward = 0.0
             productive_delta = 0.0
             excess_delta = 0.0
+            target_cross_reward = 0.0
 
             if rc.enable_target_objective:
                 prev_gap = max(rc.target_mass - prev_m_fp, 0.0)
@@ -76,6 +107,8 @@ class RewardScheme:
                 excess_delta = max(above_target_curr - above_target_prev, 0.0)
                 progress_reward -= rc.post_target_delta_penalty_weight * excess_delta
                 productive_delta = max(prev_gap - curr_gap, 0.0)
+                if prev_m_fp < rc.target_mass <= m_fp:
+                    target_cross_reward = float(rc.target_cross_bonus)
             else:
                 prev_deficit = max(rc.uf_conc_soft_low_limit - prev_c_uf, 0.0)
                 curr_deficit = max(rc.uf_conc_soft_low_limit - c_uf, 0.0)
@@ -108,6 +141,13 @@ class RewardScheme:
             if low_conc_minutes > 0:
                 low_conc_penalty -= rc.uf_conc_low_penalty * float(low_conc_minutes)
 
+            conc_quality_reward = _compute_concentration_guidance_reward(
+                rc,
+                c_uf=float(c_uf),
+                episode_step=int(episode_step),
+                max_steps=int(max_steps),
+            )
+
             dry_run_flow_penalty = 0.0
             if rc.dry_run_flow_penalty_weight > 0.0:
                 q_fp_norm = float(np.clip(q_fp / 70.0, 0.0, 1.0))
@@ -120,6 +160,12 @@ class RewardScheme:
                 low_gap = max(float(rc.uf_conc_guidance_target) - c_uf, 0.0)
                 q_uf_norm = float(np.clip(q_uf / 50.0, 0.0, 1.0))
                 uf_flow_quality_penalty -= rc.uf_low_conc_flow_penalty_weight * (low_gap ** 2) * q_uf_norm
+
+            smoothness_penalty = 0.0
+            if rc.smoothness_weight > 0.0:
+                delta_q_uf = float((q_uf - prev_q_uf) / 50.0)
+                delta_q_fp = float((q_fp - prev_q_fp) / 70.0)
+                smoothness_penalty -= rc.smoothness_weight * (delta_q_uf ** 2 + delta_q_fp ** 2)
 
             medium_constraint_now = bool(dry_run_minutes > 0 or low_conc_minutes > 0)
             if rc.constraint_step_reward_block and medium_constraint_now:
@@ -145,12 +191,15 @@ class RewardScheme:
 
             total_reward = (
                 progress_reward
+                + target_cross_reward
                 + energy_reward
                 + safety_penalty
                 + dry_run_penalty
                 + low_conc_penalty
+                + conc_quality_reward
                 + dry_run_flow_penalty
                 + uf_flow_quality_penalty
+                + smoothness_penalty
                 + terminal_reward
             )
             total_reward = float(np.clip(total_reward, rc.reward_clip_min, rc.reward_clip_max))
@@ -163,7 +212,7 @@ class RewardScheme:
                 "target_gap": 0.0,
                 "overshoot": float(-rc.post_target_delta_penalty_weight * excess_delta),
                 "schedule": 0.0,
-                "target_cross": 0.0,
+                "target_cross": float(target_cross_reward),
                 "throughput": float(progress_reward),
                 "band_hold": 0.0,
                 "energy": float(energy_reward),
@@ -172,9 +221,9 @@ class RewardScheme:
                 "safety": float(safety_penalty),
                 "dry_run": float(dry_run_penalty),
                 "low_conc": float(low_conc_penalty),
-                "conc_quality": 0.0,
+                "conc_quality": float(conc_quality_reward),
                 "uf_flow_quality": float(uf_flow_quality_penalty),
-                "smooth": 0.0,
+                "smooth": float(smoothness_penalty),
                 "terminal": float(terminal_reward),
                 "total": total_reward,
             }
@@ -184,6 +233,7 @@ class RewardScheme:
         productive_delta = 0.0
         glide_delta = 0.0
         excess_delta = 0.0
+        target_cross_reward = 0.0
 
         # 1) Production shaping:
         # before target -> reward each extra ton;
@@ -210,6 +260,8 @@ class RewardScheme:
                 + rc.throughput_reward_weight * rc.pre_target_glide_scale * glide_delta
                 - rc.post_target_delta_penalty_weight * excess_delta
             )
+            if prev_m_fp < rc.target_mass <= m_fp:
+                target_cross_reward = float(rc.target_cross_bonus)
         else:
             productive_delta = max(delta_m_fp, 0.0)
             production_reward = rc.throughput_reward_weight * productive_delta
@@ -274,33 +326,24 @@ class RewardScheme:
         if low_conc_minutes > 0:
             low_conc_penalty -= rc.uf_conc_low_penalty * float(low_conc_minutes)
 
-        conc_quality_reward = 0.0
-        if (
-            rc.uf_conc_guidance_below_weight > 0.0
-            or rc.uf_conc_guidance_above_weight > 0.0
-            or rc.uf_conc_guidance_band_bonus != 0.0
-        ):
-            target = float(rc.uf_conc_guidance_target)
-            band = max(float(rc.uf_conc_guidance_band), 0.0)
-            below_gap = max(target - c_uf, 0.0)
-            above_gap = max(c_uf - target, 0.0)
-            # Use smooth quadratic shaping so the learner gets a usable local
-            # gradient near the desired operating region, instead of a large
-            # nearly constant penalty whenever C_uf is simply "too low".
-            conc_quality_reward -= rc.uf_conc_guidance_below_weight * (below_gap ** 2)
-            conc_quality_reward -= rc.uf_conc_guidance_above_weight * (above_gap ** 2)
-            if band > 0.0:
-                distance = abs(c_uf - target)
-                if distance <= band:
-                    conc_quality_reward += rc.uf_conc_guidance_band_bonus * (1.0 - distance / band)
-            elif c_uf == target:
-                conc_quality_reward += rc.uf_conc_guidance_band_bonus
+        conc_quality_reward = _compute_concentration_guidance_reward(
+            rc,
+            c_uf=float(c_uf),
+            episode_step=int(episode_step),
+            max_steps=int(max_steps),
+        )
 
         uf_flow_quality_penalty = 0.0
         if rc.uf_low_conc_flow_penalty_weight > 0.0:
             low_gap = max(float(rc.uf_conc_guidance_target) - c_uf, 0.0)
             q_uf_norm = float(np.clip(q_uf / 50.0, 0.0, 1.0))
             uf_flow_quality_penalty -= rc.uf_low_conc_flow_penalty_weight * (low_gap ** 2) * q_uf_norm
+
+        smoothness_penalty = 0.0
+        if rc.smoothness_weight > 0.0:
+            delta_q_uf = float((q_uf - prev_q_uf) / 50.0)
+            delta_q_fp = float((q_fp - prev_q_fp) / 70.0)
+            smoothness_penalty -= rc.smoothness_weight * (delta_q_uf ** 2 + delta_q_fp ** 2)
 
         # 4) Terminal objective:
         # final judgement is dominated by whether the episode lands inside the target band.
@@ -335,6 +378,7 @@ class RewardScheme:
 
         total_reward = (
             production_reward
+            + target_cross_reward
             + energy_reward
             + fp_usage_penalty
             + schedule_reward
@@ -343,6 +387,7 @@ class RewardScheme:
             + low_conc_penalty
             + conc_quality_reward
             + uf_flow_quality_penalty
+            + smoothness_penalty
             + terminal_reward
         )
         total_reward = float(np.clip(total_reward, rc.reward_clip_min, rc.reward_clip_max))
@@ -355,7 +400,7 @@ class RewardScheme:
             "target_gap": 0.0,
             "overshoot": float(-rc.post_target_delta_penalty_weight * excess_delta),
             "schedule": float(schedule_reward),
-            "target_cross": 0.0,
+            "target_cross": float(target_cross_reward),
             "throughput": float(production_reward),
             "band_hold": 0.0,
             "energy": float(energy_reward),
@@ -366,7 +411,7 @@ class RewardScheme:
             "low_conc": float(low_conc_penalty),
             "conc_quality": float(conc_quality_reward),
             "uf_flow_quality": float(uf_flow_quality_penalty),
-            "smooth": 0.0,
+            "smooth": float(smoothness_penalty),
             "terminal": float(terminal_reward),
             "total": total_reward,
         }
