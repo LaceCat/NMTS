@@ -17,6 +17,8 @@ buffer_data/
 logs/
 plots/
 *_run_*/
+__agent_debug__/
+__smoke_safety_first__/
 
 # Large files
 *.gif

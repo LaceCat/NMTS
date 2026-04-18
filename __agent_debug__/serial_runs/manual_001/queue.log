@@ -1,8 +1,0 @@
-2026-04-17 11:27:35 Serial run start | tag=manual_001 | epochs=120 | episodes_per_epoch=5 | device=cuda
-2026-04-17 11:27:35 Starting DD | run_name=dd_gru_serial_manual_001
-2026-04-17 12:08:23 Completed DD | run_name=dd_gru_serial_manual_001
-2026-04-17 12:08:23 Starting CD | run_name=cd_gru_serial_manual_001
-2026-04-17 13:12:34 Completed CD | run_name=cd_gru_serial_manual_001
-2026-04-17 13:12:34 Starting CC | run_name=cc_gru_serial_manual_001
-2026-04-17 13:49:40 Completed CC | run_name=cc_gru_serial_manual_001
-2026-04-17 13:49:40 All serial runs finished | tag=manual_001

@@ -1,2 +1,0 @@
-2026-04-17 11:26:21 Serial run start | tag=20260417_1134 | epochs=120 | episodes_per_epoch=5 | device=cuda
-2026-04-17 11:26:21 Starting DD | run_name=dd_gru_serial_20260417_1134
