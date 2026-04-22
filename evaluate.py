@@ -83,7 +83,7 @@ def parse_args():
     parser.add_argument(
         "--q_fp_delta_max",
         type=float,
-        default=-1.0,
+        default=2.0,
         help="Per-decision maximum change of Q_fp in CC mode. <0 disables the rate limit.",
     )
     parser.add_argument(
@@ -94,7 +94,7 @@ def parse_args():
     parser.add_argument(
         "--low_buffer_fp_threshold",
         type=float,
-        default=0.8,
+        default=0.0,
         help="Buffer-volume threshold below which the hard low-buffer Q_fp guard is active.",
     )
     parser.add_argument(
@@ -103,6 +103,81 @@ def parse_args():
         default=0.0,
         help="Maximum allowed Q_fp under the hard low-buffer guard.",
     )
+    parser.add_argument(
+        "--low_buffer_fp_guard_max_correction",
+        type=float,
+        default=2.0,
+        help="Maximum downward Q_fp correction applied by the low-buffer dry-run guard in one decision step.",
+    )
+    parser.add_argument(
+        "--governor_total_correction_limit",
+        type=float,
+        default=-1.0,
+        help="Maximum total governor-induced action change in one decision step: |ΔQ_uf| + |ΔQ_fp|.",
+    )
+    parser.add_argument(
+        "--direct_q_fp_physical_only",
+        action="store_true",
+        help="Bypass CC-mode Q_fp post-processing so actual_q_fp mainly comes from the policy itself, with only unavoidable physical clipping remaining.",
+    )
+    parser.add_argument(
+        "--post_target_fp_guard_level",
+        type=float,
+        default=24.0,
+        help="Buffer guard level for the post-target FP governor.",
+    )
+    parser.add_argument(
+        "--disable_post_target_idle_seeker",
+        action="store_true",
+        help="Disable the post-target idle seeker during evaluation.",
+    )
+    parser.add_argument(
+        "--post_target_idle_q_uf_cap",
+        type=float,
+        default=0.5,
+        help="Q_uf cap used by the post-target idle seeker.",
+    )
+    parser.add_argument(
+        "--post_target_idle_q_fp_floor",
+        type=float,
+        default=20.0,
+        help="Minimum Q_fp used by the post-target idle seeker while draining residual buffer inventory.",
+    )
+    parser.add_argument(
+        "--disable_midcourse_quality_governor",
+        action="store_true",
+        help="Disable the midcourse quality governor.",
+    )
+    parser.add_argument("--midcourse_quality_start_mass", type=float, default=115.0)
+    parser.add_argument("--midcourse_quality_c_uf_target", type=float, default=0.745)
+    parser.add_argument("--midcourse_quality_q_uf_cap", type=float, default=9.5)
+    parser.add_argument("--midcourse_quality_q_fp_floor", type=float, default=21.5)
+    parser.add_argument("--midcourse_quality_buffer_min", type=float, default=1.6)
+    parser.add_argument("--midcourse_quality_buffer_max", type=float, default=18.0)
+    parser.add_argument(
+        "--disable_late_concentration_keeper",
+        action="store_true",
+        help="Disable the late concentration keeper.",
+    )
+    parser.add_argument("--late_concentration_window_minutes", type=int, default=120)
+    parser.add_argument("--late_concentration_mass_gap_limit", type=float, default=24.0)
+    parser.add_argument("--late_concentration_c_uf_target", type=float, default=0.72)
+    parser.add_argument("--late_concentration_q_uf_cap", type=float, default=18.0)
+    parser.add_argument("--late_concentration_q_fp_floor", type=float, default=10.0)
+    parser.add_argument("--late_concentration_buffer_min", type=float, default=2.0)
+    parser.add_argument("--late_concentration_buffer_max", type=float, default=18.0)
+    parser.add_argument(
+        "--disable_late_target_compensator",
+        action="store_true",
+        help="Disable the late target compensator.",
+    )
+    parser.add_argument("--late_target_window_minutes", type=int, default=175)
+    parser.add_argument("--late_target_mass_gap_limit", type=float, default=21.0)
+    parser.add_argument("--late_target_c_uf_limit", type=float, default=0.746)
+    parser.add_argument("--late_target_v_buf_limit", type=float, default=24.0)
+    parser.add_argument("--late_target_q_uf_bias_max", type=float, default=6.2)
+    parser.add_argument("--late_target_q_fp_bias_max", type=float, default=12.8)
+    parser.add_argument("--late_target_q_fp_min_buffer", type=float, default=1.0)
     parser.add_argument(
         "--interval",
         type=int,
@@ -156,6 +231,14 @@ def evaluate_single(agent, env, seed=0, verbose=False, save_plot=False, adapt_fn
         episode_reward += reward
         state = next_state
 
+    unsafe_steps = int(sum(1 for item in info_list if item.get("safety_violation", False)))
+    dry_run_steps = int(sum(int(item.get("dry_run_minutes", 0)) > 0 for item in info_list))
+    low_conc_steps = int(sum(int(item.get("low_conc_minutes", 0)) > 0 for item in info_list))
+    mixer_idle_minutes = int(sum(int(item.get("mixer_idle_minutes", 0)) for item in info_list))
+    midcourse_quality_steps = int(sum(1 for item in info_list if item.get("midcourse_quality_governed", False)))
+    late_concentration_steps = int(sum(1 for item in info_list if item.get("late_concentration_kept", False)))
+    late_target_steps = int(sum(1 for item in info_list if item.get("late_target_compensated", False)))
+
     if verbose:
         print(f"\nEpisode (seed={seed}):")
         print(f"  Reward: {episode_reward:.2f}")
@@ -179,6 +262,14 @@ def evaluate_single(agent, env, seed=0, verbose=False, save_plot=False, adapt_fn
         env.reward_config.target_mass_high,
     )
     metrics["reward"] = episode_reward
+    metrics["episode_mean_c_uf"] = float(info.get("episode_mean_c_uf", 0.0))
+    metrics["unsafe_steps"] = unsafe_steps
+    metrics["dry_run_steps"] = dry_run_steps
+    metrics["low_conc_steps"] = low_conc_steps
+    metrics["mixer_idle_minutes"] = mixer_idle_minutes
+    metrics["midcourse_quality_steps"] = midcourse_quality_steps
+    metrics["late_concentration_steps"] = late_concentration_steps
+    metrics["late_target_steps"] = late_target_steps
     return metrics
 
 
@@ -365,12 +456,42 @@ def main():
         uf_control_mode=args.uf_control_mode,
         uf_delta_max=args.uf_delta_max,
         q_fp_delta_max=(None if args.q_fp_delta_max < 0 else args.q_fp_delta_max),
+        direct_q_fp_physical_only=args.direct_q_fp_physical_only,
         pricing=PricingPresets.daily_24h(),
         reward_config=reward_config,
         enable_post_target_fp_governor=not args.disable_post_target_fp_governor,
+        post_target_fp_guard_level=args.post_target_fp_guard_level,
+        enable_post_target_idle_seeker=not args.disable_post_target_idle_seeker,
+        post_target_idle_q_uf_cap=args.post_target_idle_q_uf_cap,
+        post_target_idle_q_fp_floor=args.post_target_idle_q_fp_floor,
         enable_low_buffer_fp_guard=not args.disable_low_buffer_fp_guard,
         low_buffer_fp_threshold=args.low_buffer_fp_threshold,
         low_buffer_fp_max=args.low_buffer_fp_max,
+        low_buffer_fp_guard_max_correction=args.low_buffer_fp_guard_max_correction,
+        governor_total_correction_limit=args.governor_total_correction_limit,
+        enable_midcourse_quality_governor=not args.disable_midcourse_quality_governor,
+        midcourse_quality_start_mass=args.midcourse_quality_start_mass,
+        midcourse_quality_c_uf_target=args.midcourse_quality_c_uf_target,
+        midcourse_quality_q_uf_cap=args.midcourse_quality_q_uf_cap,
+        midcourse_quality_q_fp_floor=args.midcourse_quality_q_fp_floor,
+        midcourse_quality_buffer_min=args.midcourse_quality_buffer_min,
+        midcourse_quality_buffer_max=args.midcourse_quality_buffer_max,
+        enable_late_concentration_keeper=not args.disable_late_concentration_keeper,
+        late_concentration_window_minutes=args.late_concentration_window_minutes,
+        late_concentration_mass_gap_limit=args.late_concentration_mass_gap_limit,
+        late_concentration_c_uf_target=args.late_concentration_c_uf_target,
+        late_concentration_q_uf_cap=args.late_concentration_q_uf_cap,
+        late_concentration_q_fp_floor=args.late_concentration_q_fp_floor,
+        late_concentration_buffer_min=args.late_concentration_buffer_min,
+        late_concentration_buffer_max=args.late_concentration_buffer_max,
+        enable_late_target_compensator=not args.disable_late_target_compensator,
+        late_target_window_minutes=args.late_target_window_minutes,
+        late_target_mass_gap_limit=args.late_target_mass_gap_limit,
+        late_target_c_uf_limit=args.late_target_c_uf_limit,
+        late_target_v_buf_limit=args.late_target_v_buf_limit,
+        late_target_q_uf_bias_max=args.late_target_q_uf_bias_max,
+        late_target_q_fp_bias_max=args.late_target_q_fp_bias_max,
+        late_target_q_fp_min_buffer=args.late_target_q_fp_min_buffer,
     )
 
     agent, needs_adapt, select_action_adapted = build_agent_and_adapter(args, env)
@@ -409,11 +530,29 @@ def main():
     energy_costs = [m["energy_cost"] for m in all_metrics]
     rewards = [m["reward"] for m in all_metrics]
     eeis = [m["eei"] for m in all_metrics]
+    mean_c_ufs = [m["episode_mean_c_uf"] for m in all_metrics]
+    unsafe_steps = [m["unsafe_steps"] for m in all_metrics]
+    dry_run_steps = [m["dry_run_steps"] for m in all_metrics]
+    low_conc_steps = [m["low_conc_steps"] for m in all_metrics]
+    mixer_idle_minutes = [m["mixer_idle_minutes"] for m in all_metrics]
+    midcourse_quality_steps = [m["midcourse_quality_steps"] for m in all_metrics]
+    late_concentration_steps = [m["late_concentration_steps"] for m in all_metrics]
+    late_target_steps = [m["late_target_steps"] for m in all_metrics]
+    total_eval_steps = float(args.steps * len(all_metrics))
 
     print(f"  final mass:   {np.mean(final_masses):.1f} +/- {np.std(final_masses):.1f} t")
     print(f"  energy cost:  {np.mean(energy_costs):.2f} +/- {np.std(energy_costs):.2f}")
     print(f"  reward:       {np.mean(rewards):.2f} +/- {np.std(rewards):.2f}")
     print(f"  EEI:          {np.mean(eeis):.2f} +/- {np.std(eeis):.2f}")
+    print(f"  avg C_uf:     {np.mean(mean_c_ufs):.4f} +/- {np.std(mean_c_ufs):.4f}")
+    print(f"  unsafe ep:    {np.mean([m['safety_violations'] > 0 for m in all_metrics]):.1%}")
+    print(f"  unsafe step:  {sum(unsafe_steps) / max(total_eval_steps, 1.0):.1%}")
+    print(f"  dry-run step: {sum(dry_run_steps) / max(total_eval_steps, 1.0):.1%}")
+    print(f"  low-conc step:{sum(low_conc_steps) / max(total_eval_steps, 1.0):.1%}")
+    print(f"  mixer idle m: {np.mean(mixer_idle_minutes):.1f}")
+    print(f"  midcourse gov:{sum(midcourse_quality_steps) / max(total_eval_steps, 1.0):.1%}")
+    print(f"  late conc:    {sum(late_concentration_steps) / max(total_eval_steps, 1.0):.1%}")
+    print(f"  late target:  {sum(late_target_steps) / max(total_eval_steps, 1.0):.1%}")
 
     target_low = reward_config.target_mass_low
     target_high = reward_config.target_mass_high
@@ -433,6 +572,16 @@ def main():
         "mean_energy": float(np.mean(energy_costs)),
         "mean_reward": float(np.mean(rewards)),
         "mean_eei": float(np.mean(eeis)),
+        "mean_avg_c_uf": float(np.mean(mean_c_ufs)),
+        "std_avg_c_uf": float(np.std(mean_c_ufs)),
+        "unsafe_episode_rate": float(np.mean([m["safety_violations"] > 0 for m in all_metrics])),
+        "unsafe_step_rate": float(sum(unsafe_steps) / max(total_eval_steps, 1.0)),
+        "dry_run_step_rate": float(sum(dry_run_steps) / max(total_eval_steps, 1.0)),
+        "low_conc_step_rate": float(sum(low_conc_steps) / max(total_eval_steps, 1.0)),
+        "mean_mixer_idle_minutes": float(np.mean(mixer_idle_minutes)),
+        "midcourse_quality_step_rate": float(sum(midcourse_quality_steps) / max(total_eval_steps, 1.0)),
+        "late_concentration_step_rate": float(sum(late_concentration_steps) / max(total_eval_steps, 1.0)),
+        "late_target_step_rate": float(sum(late_target_steps) / max(total_eval_steps, 1.0)),
         "pass_rate": float(pass_rate),
         "per_seed": [
             {
@@ -441,6 +590,14 @@ def main():
                 "energy": m["energy_cost"],
                 "reward": m["reward"],
                 "eei": m["eei"],
+                "avg_c_uf": m["episode_mean_c_uf"],
+                "unsafe_steps": m["unsafe_steps"],
+                "dry_run_steps": m["dry_run_steps"],
+                "low_conc_steps": m["low_conc_steps"],
+                "mixer_idle_minutes": m["mixer_idle_minutes"],
+                "midcourse_quality_steps": m["midcourse_quality_steps"],
+                "late_concentration_steps": m["late_concentration_steps"],
+                "late_target_steps": m["late_target_steps"],
             }
             for i, m in enumerate(all_metrics)
         ],

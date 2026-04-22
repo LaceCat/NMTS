@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--disable_post_target_fp_governor", action="store_true")
     parser.add_argument("--q_fp_delta_max", type=float, default=-1.0)
     parser.add_argument("--disable_low_buffer_fp_guard", action="store_true")
-    parser.add_argument("--low_buffer_fp_threshold", type=float, default=0.8)
+    parser.add_argument("--low_buffer_fp_threshold", type=float, default=0.0)
     parser.add_argument("--low_buffer_fp_max", type=float, default=0.0)
     args = parser.parse_args()
     if args.algo.lower() == "sac":
@@ -96,7 +96,8 @@ def rollout(args: argparse.Namespace) -> tuple[list[dict], dict]:
             "c_uf": float(raw_state[0]),
             "v_buf": float(raw_state[1]),
             "q_uf": 0.0,
-            "q_fp": 0.0,
+            "q_fp_env": 0.0,
+            "q_fp_actual": 0.0,
             "q_fp_cmd": 0.0,
             "qf": float(raw_state[7]),
             "cf": float(raw_state[8]),
@@ -128,7 +129,8 @@ def rollout(args: argparse.Namespace) -> tuple[list[dict], dict]:
                 "c_uf": float(next_raw_state[0]),
                 "v_buf": float(next_raw_state[1]),
                 "q_uf": float(info.get("applied_q_uf", action[0])),
-                "q_fp": float(info.get("applied_q_fp", action[1])),
+                "q_fp_env": float(info.get("applied_q_fp", action[1])),
+                "q_fp_actual": float(info.get("actual_q_fp", info.get("applied_q_fp", action[1]))),
                 "q_fp_cmd": float(info.get("commanded_q_fp", action[1])),
                 "qf": float(next_raw_state[7]),
                 "cf": float(next_raw_state[8]),
@@ -164,7 +166,9 @@ def create_animation(records: list[dict], run_name: str, target: float, output_p
     c_uf = np.array([r["c_uf"] for r in records], dtype=float)
     v_buf = np.array([r["v_buf"] for r in records], dtype=float)
     q_uf = np.array([r["q_uf"] for r in records], dtype=float)
-    q_fp = np.array([r["q_fp"] for r in records], dtype=float)
+    q_fp_env = np.array([r["q_fp_env"] for r in records], dtype=float)
+    q_fp_actual = np.array([r["q_fp_actual"] for r in records], dtype=float)
+    q_fp_cmd = np.array([r["q_fp_cmd"] for r in records], dtype=float)
     qf = np.array([r["qf"] for r in records], dtype=float)
     cf = np.array([r["cf"] for r in records], dtype=float)
     price = np.array([r["price"] for r in records], dtype=float)
@@ -247,7 +251,9 @@ def create_animation(records: list[dict], run_name: str, target: float, output_p
     v_line, = ax_vbuf.plot([], [], color="#2a9d8f", linewidth=2)
     v_dot, = ax_vbuf.plot([], [], "o", color="#1d7874", ms=4)
     quf_line, = ax_act.plot([], [], color="#f4a261", linewidth=2, label="Q_uf")
-    qfp_line, = ax_act.plot([], [], color="#e63946", linewidth=2, label="Q_fp")
+    qfp_cmd_line, = ax_act.plot([], [], color="#e76f51", linewidth=1.2, linestyle="--", label="Q_fp cmd")
+    qfp_env_line, = ax_act.plot([], [], color="#ff6b6b", linewidth=1.2, linestyle=":", label="Q_fp env")
+    qfp_actual_line, = ax_act.plot([], [], color="#e63946", linewidth=2, label="Q_fp actual")
     qf_line, = ax_feed.plot([], [], color="#457b9d", linewidth=2, label="Qf")
     cf_line, = ax_feed2.plot([], [], color="#1d3557", linewidth=2, label="Cf")
     p_line, = ax_price.plot([], [], color="#ff006e", linewidth=2, label="Price")
@@ -285,7 +291,9 @@ def create_animation(records: list[dict], run_name: str, target: float, output_p
         v_line.set_data(x, v_buf[: frame + 1])
         v_dot.set_data([minutes[frame]], [v_buf[frame]])
         quf_line.set_data(x, q_uf[: frame + 1])
-        qfp_line.set_data(x, q_fp[: frame + 1])
+        qfp_cmd_line.set_data(x, q_fp_cmd[: frame + 1])
+        qfp_env_line.set_data(x, q_fp_env[: frame + 1])
+        qfp_actual_line.set_data(x, q_fp_actual[: frame + 1])
         qf_line.set_data(x, qf[: frame + 1])
         cf_line.set_data(x, cf[: frame + 1])
         p_line.set_data(x, price[: frame + 1])
@@ -306,7 +314,8 @@ def create_animation(records: list[dict], run_name: str, target: float, output_p
             f"step={frame:3d}  min={records[frame]['minute']:4d}  "
             f"mass={records[frame]['m_fp']:.1f}t  C_uf={records[frame]['c_uf']:.4f}  "
             f"V_buf={records[frame]['v_buf']:.1f}\n"
-            f"Q_uf={records[frame]['q_uf']:.1f}  Q_fp={records[frame]['q_fp']:.1f}  "
+            f"Q_uf={records[frame]['q_uf']:.1f}  Q_fp_cmd={records[frame]['q_fp_cmd']:.1f}  "
+            f"Q_fp_env={records[frame]['q_fp_env']:.1f}  Q_fp_actual={records[frame]['q_fp_actual']:.1f}\n"
             f"Qf={records[frame]['qf']:.1f}  Cf={records[frame]['cf']:.3f}  "
             f"price={records[frame]['price']:.3f}  energy={records[frame]['energy']:.1f}"
         )

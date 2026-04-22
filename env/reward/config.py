@@ -24,6 +24,7 @@ class RewardConfig:
     # Reward mode:
     # - default: legacy multi-term shaping
     # - progress_constraints: simplified "progress reward + constraint penalties"
+    # - minimal_constraints: aggressively simplified "progress + energy + hard/soft constraints + terminal"
     reward_mode: str = "default"
 
     @property
@@ -59,6 +60,8 @@ class RewardConfig:
     energy_cost_weight: float = 0.90
     fp_usage_weight: float = 0.0
     post_target_fp_usage_weight: float = 0.0
+    post_target_q_uf_hold_weight: float = 0.0
+    post_target_q_uf_guard_level: float = 3.0
     # Post-target operating logic:
     # once 400 t is already completed, the filter press should normally stay off
     # unless the buffer is getting close to its upper limit. We therefore add an
@@ -88,6 +91,32 @@ class RewardConfig:
     # direction even before a discrete dry-run event is counted.
     dry_run_flow_penalty_weight: float = 0.0
 
+    # Engineering power-off zone for the buffer mixer.
+    # Once the buffer inventory is already very low, standby stirring power is
+    # considered avoidable and the policy can be rewarded for fully shutting
+    # down the tail section after the production target is reached.
+    mixer_idle_volume_threshold: float = 1.5
+    idle_shutdown_q_fp_threshold: float = 3.0
+    idle_shutdown_bonus: float = 0.0
+
+    # Direct-Q_fp training support:
+    # once environment-side soft Q_fp post-processing is removed, we want the
+    # actor to stop relying on infeasible high Q_fp commands that later get
+    # reduced by physical execution limits. These penalties are applied on the
+    # gap between:
+    # - scheduled Q_fp and minute-level executed/applied Q_fp
+    # - applied Q_fp and actual slurry-limited Q_fp
+    q_fp_schedule_gap_penalty_weight: float = 0.0
+    q_fp_actual_gap_penalty_weight: float = 0.0
+    q_fp_gap_tolerance: float = 0.0
+    # Discourage relying on environment-side Q_fp correction during the final
+    # governor-withdrawal stage. Small residual correction inside the tolerance
+    # band is allowed, but persistent dependence should be pushed back into the
+    # policy itself.
+    guard_intervention_penalty_weight: float = 0.0
+    q_fp_correction_excess_penalty_weight: float = 0.0
+    q_fp_correction_tolerance: float = 0.0
+
     # Product-quality soft constraint:
     # keep C_uf above 0.66 when possible, but do not treat short violations as
     # catastrophes on the same level as hard safety-limit breaches.
@@ -100,6 +129,7 @@ class RewardConfig:
     uf_conc_guidance_target: float = 0.68
     uf_conc_guidance_band: float = 0.02
     uf_conc_guidance_start_ratio: float = 0.0
+    uf_conc_guidance_mass_gate_ratio: float = 0.0
     # Use a separate upper soft limit so the controller can operate above the
     # nominal target concentration without being punished immediately, while
     # still receiving a clear warning before the hard unsafe limit at 0.75.
@@ -126,6 +156,13 @@ class RewardConfig:
     terminal_under_penalty_quadratic: float = 0.0
     terminal_over_penalty_weight: float = 2.0
     terminal_over_penalty_quadratic: float = 0.0
+    # Episode-level average concentration objective:
+    # only matters at the episode end, and should be secondary to target
+    # completion. Use it to prefer policies that achieve the target while
+    # staying in a higher average underflow-concentration regime.
+    terminal_avg_cuf_threshold: float = 0.71
+    terminal_avg_cuf_bonus_weight: float = 0.0
+    terminal_avg_cuf_penalty_weight: float = 0.0
 
     # Smoothness is intentionally disabled in the simplified reward.
     smoothness_weight: float = 0.0

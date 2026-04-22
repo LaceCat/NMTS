@@ -8,7 +8,11 @@ from collections import namedtuple
 import numpy as np
 import torch
 
-Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "done"))
+Transition = namedtuple(
+    "Transition",
+    ("state", "action", "reward", "next_state", "done", "teacher_action", "teacher_active"),
+    defaults=(None, False),
+)
 
 
 class ReplayBuffer:
@@ -19,13 +23,15 @@ class ReplayBuffer:
         self.buffer = []
         self.position = 0
 
-    def add(self, state, action, reward, next_state, done):
+    def add(self, state, action, reward, next_state, done, teacher_action=None, teacher_active=False):
         experience = Transition(
             np.asarray(state, dtype=np.float32),
             np.asarray(action, dtype=np.float32),
             float(reward),
             np.asarray(next_state, dtype=np.float32),
             bool(done),
+            None if teacher_action is None else np.asarray(teacher_action, dtype=np.float32),
+            bool(teacher_active),
         )
 
         if len(self.buffer) < self.capacity:
@@ -35,7 +41,7 @@ class ReplayBuffer:
 
         self.position = (self.position + 1) % self.capacity
 
-    def sample(self, batch_size: int, device: str = "cpu"):
+    def sample(self, batch_size: int, device: str = "cpu", return_teacher: bool = False):
         if len(self.buffer) < batch_size:
             return None
 
@@ -68,7 +74,27 @@ class ReplayBuffer:
             device=device,
         ).unsqueeze(1)
 
-        return states, actions, rewards, next_states, dones
+        if not return_teacher:
+            return states, actions, rewards, next_states, dones
+
+        teacher_actions = torch.tensor(
+            np.asarray(
+                [
+                    s.teacher_action if s.teacher_action is not None else np.zeros_like(s.action, dtype=np.float32)
+                    for s in samples
+                ],
+                dtype=np.float32,
+            ),
+            dtype=torch.float32,
+            device=device,
+        )
+        teacher_mask = torch.tensor(
+            np.asarray([float(bool(s.teacher_active)) for s in samples], dtype=np.float32),
+            dtype=torch.float32,
+            device=device,
+        ).unsqueeze(1)
+
+        return states, actions, rewards, next_states, dones, teacher_actions, teacher_mask
 
     @property
     def size(self):
@@ -140,15 +166,19 @@ class PrioritizedReplayBuffer:
             float(reward),
             np.asarray(next_state, dtype=np.float32),
             bool(done),
+            None if first.teacher_action is None else np.asarray(first.teacher_action, dtype=np.float32),
+            bool(first.teacher_active),
         )
 
-    def add(self, state, action, reward, next_state, done):
+    def add(self, state, action, reward, next_state, done, teacher_action=None, teacher_active=False):
         experience = Transition(
             np.asarray(state, dtype=np.float32),
             np.asarray(action, dtype=np.float32),
             float(reward),
             np.asarray(next_state, dtype=np.float32),
             bool(done),
+            None if teacher_action is None else np.asarray(teacher_action, dtype=np.float32),
+            bool(teacher_active),
         )
         self.n_step_buffer.append(experience)
 
@@ -167,7 +197,7 @@ class PrioritizedReplayBuffer:
         else:
             self.n_step_buffer.popleft()
 
-    def sample(self, batch_size: int, device: str = "cpu"):
+    def sample(self, batch_size: int, device: str = "cpu", return_teacher: bool = False):
         if len(self.buffer) < batch_size:
             return None
 
@@ -195,7 +225,27 @@ class PrioritizedReplayBuffer:
         dones = torch.tensor(np.asarray([s.done for s in samples]), dtype=torch.float32, device=device).unsqueeze(1)
         weights = torch.tensor(weights, dtype=torch.float32, device=device).unsqueeze(1)
 
-        return states, actions, rewards, next_states, dones, indices, weights
+        if not return_teacher:
+            return states, actions, rewards, next_states, dones, indices, weights
+
+        teacher_actions = torch.tensor(
+            np.asarray(
+                [
+                    s.teacher_action if s.teacher_action is not None else np.zeros_like(s.action, dtype=np.float32)
+                    for s in samples
+                ],
+                dtype=np.float32,
+            ),
+            dtype=torch.float32,
+            device=device,
+        )
+        teacher_mask = torch.tensor(
+            np.asarray([float(bool(s.teacher_active)) for s in samples], dtype=np.float32),
+            dtype=torch.float32,
+            device=device,
+        ).unsqueeze(1)
+
+        return states, actions, rewards, next_states, dones, indices, weights, teacher_actions, teacher_mask
 
     def update_priorities(self, indices, td_errors):
         for idx, error in zip(indices, td_errors):

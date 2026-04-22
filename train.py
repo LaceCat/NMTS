@@ -60,7 +60,7 @@ def parse_args():
     parser.add_argument(
         "--q_fp_delta_max",
         type=float,
-        default=-1.0,
+        default=2.0,
         help="Per-decision maximum change of Q_fp in CC mode. <0 disables the rate limit.",
     )
     parser.add_argument(
@@ -71,7 +71,7 @@ def parse_args():
     parser.add_argument(
         "--low_buffer_fp_threshold",
         type=float,
-        default=0.8,
+        default=0.0,
         help="Buffer-volume threshold below which the hard low-buffer Q_fp guard is active.",
     )
     parser.add_argument(
@@ -79,6 +79,23 @@ def parse_args():
         type=float,
         default=0.0,
         help="Maximum allowed Q_fp under the hard low-buffer guard.",
+    )
+    parser.add_argument(
+        "--low_buffer_fp_guard_max_correction",
+        type=float,
+        default=2.0,
+        help="Maximum downward Q_fp correction applied by the low-buffer dry-run guard in one decision step.",
+    )
+    parser.add_argument(
+        "--governor_total_correction_limit",
+        type=float,
+        default=-1.0,
+        help="Maximum total governor-induced action change in one decision step: |ΔQ_uf| + |ΔQ_fp|.",
+    )
+    parser.add_argument(
+        "--direct_q_fp_physical_only",
+        action="store_true",
+        help="Bypass CC-mode Q_fp post-processing so actual_q_fp mainly comes from the policy itself, with only unavoidable physical clipping remaining.",
     )
 
     parser.add_argument("--epochs", type=int, default=1000, help="Number of training epochs")
@@ -104,6 +121,12 @@ def parse_args():
         help="Deterministic evaluation episodes after each training epoch. 0 disables epoch-end evaluation.",
     )
     parser.add_argument(
+        "--eval_seed_start",
+        type=int,
+        default=91,
+        help="Starting seed for epoch-end evaluation. Uses a fixed seed set across epochs for stable model selection.",
+    )
+    parser.add_argument(
         "--curriculum",
         type=str,
         default="safety_mass",
@@ -121,6 +144,18 @@ def parse_args():
         type=int,
         default=0,
         help="Stage 2 duration. 0 = auto (about 30%% of total epochs).",
+    )
+    parser.add_argument(
+        "--stage4_epochs",
+        type=int,
+        default=0,
+        help="Stage 4 duration. 0 disables the final governor-withdrawal stage.",
+    )
+    parser.add_argument(
+        "--stage5_epochs",
+        type=int,
+        default=0,
+        help="Stage 5 duration. 0 disables the final correction-distillation stage.",
     )
 
     parser.add_argument("--hidden_dim", type=int, default=256, help="Hidden layer width")
@@ -206,6 +241,47 @@ def parse_args():
         help="Enable the handcrafted SAC actor bias prior. Disabled by default for the clean SAC baseline.",
     )
     parser.add_argument(
+        "--enable_sac_concentration_scout",
+        action="store_true",
+        help="Enable the training-only early concentration scout experiment for SAC.",
+    )
+    parser.add_argument(
+        "--sac_concentration_scout_prob",
+        type=float,
+        default=0.35,
+        help="Base probability of applying the training-only early concentration scout in SAC.",
+    )
+    parser.add_argument(
+        "--sac_concentration_scout_window_minutes",
+        type=int,
+        default=180,
+        help="Only apply the SAC concentration scout during the first N physical minutes of each episode.",
+    )
+    parser.add_argument(
+        "--sac_concentration_scout_c_uf_target",
+        type=float,
+        default=0.72,
+        help="SAC concentration scout triggers only while C_uf stays below this target.",
+    )
+    parser.add_argument(
+        "--sac_concentration_scout_q_uf_cap",
+        type=float,
+        default=18.0,
+        help="Training-only Q_uf soft cap used by the SAC concentration scout.",
+    )
+    parser.add_argument(
+        "--sac_concentration_scout_v_buf_min",
+        type=float,
+        default=0.5,
+        help="Minimum V_buf for activating the SAC concentration scout.",
+    )
+    parser.add_argument(
+        "--sac_concentration_scout_v_buf_max",
+        type=float,
+        default=12.0,
+        help="Maximum V_buf for activating the SAC concentration scout.",
+    )
+    parser.add_argument(
         "--sac_dry_run_penalty",
         type=float,
         default=-1.0,
@@ -240,6 +316,252 @@ def parse_args():
         type=float,
         default=-1.0,
         help="Override SAC action-smoothness penalty weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_terminal_avg_cuf_threshold",
+        type=float,
+        default=-1.0,
+        help="Override SAC episode-level average C_uf threshold when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_terminal_avg_cuf_bonus_weight",
+        type=float,
+        default=-1.0,
+        help="Override SAC episode-level average C_uf bonus weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_terminal_avg_cuf_penalty_weight",
+        type=float,
+        default=-1.0,
+        help="Override SAC episode-level average C_uf penalty weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_target_cross_bonus",
+        type=float,
+        default=-1.0,
+        help="Override SAC target-cross bonus when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_terminal_under_penalty_weight",
+        type=float,
+        default=-1.0,
+        help="Override SAC terminal under-target penalty weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_terminal_over_penalty_weight",
+        type=float,
+        default=-1.0,
+        help="Override SAC terminal over-target penalty weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_terminal_target_band_bonus",
+        type=float,
+        default=-1.0,
+        help="Override SAC terminal in-band bonus when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_q_fp_schedule_gap_penalty",
+        type=float,
+        default=-1.0,
+        help="Override SAC Q_fp scheduled-vs-applied gap penalty weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_q_fp_actual_gap_penalty",
+        type=float,
+        default=-1.0,
+        help="Override SAC Q_fp applied-vs-actual gap penalty weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_guard_intervention_penalty",
+        type=float,
+        default=-1.0,
+        help="Override SAC low-buffer guard intervention penalty when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_q_fp_correction_excess_penalty",
+        type=float,
+        default=-1.0,
+        help="Override SAC penalty on Q_fp correction excess beyond the tolerance band when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_q_fp_correction_tolerance",
+        type=float,
+        default=-1.0,
+        help="Override the tolerated Q_fp environment-correction band when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_stage1_guidance_target",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-1 concentration guidance target when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_stage1_upper_soft_limit",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-1 concentration upper soft limit when >= 0. Hard safety remains unchanged.",
+    )
+    parser.add_argument(
+        "--sac_stage2_guidance_target",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-2 concentration guidance target when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_stage2_guidance_band",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-2 concentration guidance band when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_stage2_guidance_start_ratio",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-2 concentration guidance start ratio when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_stage2_guidance_mass_gate_ratio",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-2 concentration guidance mass gate ratio when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_stage2_upper_soft_limit",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-2 concentration upper soft limit when >= 0. Hard safety remains unchanged.",
+    )
+    parser.add_argument(
+        "--sac_stage2_guidance_below_weight",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-2 concentration guidance-below weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_stage2_guidance_above_weight",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-2 concentration guidance-above weight when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_stage2_guidance_band_bonus",
+        type=float,
+        default=-1.0,
+        help="Override SAC stage-2 concentration guidance in-band bonus when >= 0.",
+    )
+    parser.add_argument(
+        "--sac_reward_profile",
+        type=str,
+        default="progress",
+        choices=["progress", "minimal"],
+        help="SAC reward profile. progress = current simplified reward, minimal = aggressively simplified reward for baseline finetune.",
+    )
+    parser.add_argument(
+        "--enable_sac_high_conc_band",
+        action="store_true",
+        help="Enable the experimental high-concentration reward band around C_uf=0.73~0.74 for SAC stage-3 training.",
+    )
+    parser.add_argument(
+        "--sac_stage4_bc_weight",
+        type=float,
+        default=0.12,
+        help="Stage-4 SAC behavior-clone weight for aligning actor output with governor-executed actions.",
+    )
+    parser.add_argument(
+        "--sac_stage4_bc_q_uf_weight",
+        type=float,
+        default=0.35,
+        help="Stage-4 SAC BC loss weight on the Q_uf action dimension.",
+    )
+    parser.add_argument(
+        "--sac_stage4_bc_q_fp_weight",
+        type=float,
+        default=1.0,
+        help="Stage-4 SAC BC loss weight on the Q_fp action dimension.",
+    )
+    parser.add_argument(
+        "--sac_stage4_q_fp_teacher_weight",
+        type=float,
+        default=0.0,
+        help="Stage-4 SAC teacher-distillation weight on Q_fp. The teacher is the analytic zero-finish Q_fp target attached to the chosen Q_uf.",
+    )
+    parser.add_argument(
+        "--sac_stage4_q_fp_teacher_threshold",
+        type=float,
+        default=2.0,
+        help="Stage-4 Q_fp teacher activation threshold in m^3 residual buffer volume.",
+    )
+    parser.add_argument(
+        "--sac_stage4_teacher_action_weight",
+        type=float,
+        default=0.0,
+        help="Stage-4 teacher-distillation weight for the full soft-governor teacher action.",
+    )
+    parser.add_argument(
+        "--sac_stage4_teacher_action_q_uf_weight",
+        type=float,
+        default=1.0,
+        help="Stage-4 teacher-action loss weight on the Q_uf dimension.",
+    )
+    parser.add_argument(
+        "--sac_stage4_teacher_action_q_fp_weight",
+        type=float,
+        default=1.0,
+        help="Stage-4 teacher-action loss weight on the Q_fp dimension.",
+    )
+    parser.add_argument(
+        "--sac_stage5_bc_weight",
+        type=float,
+        default=0.0,
+        help="Stage-5 SAC behavior-clone weight for actor-only correction distillation.",
+    )
+    parser.add_argument(
+        "--sac_stage5_bc_q_uf_weight",
+        type=float,
+        default=0.10,
+        help="Stage-5 SAC BC loss weight on the Q_uf dimension.",
+    )
+    parser.add_argument(
+        "--sac_stage5_bc_q_fp_weight",
+        type=float,
+        default=1.0,
+        help="Stage-5 SAC BC loss weight on the Q_fp dimension.",
+    )
+    parser.add_argument(
+        "--sac_stage5_teacher_action_weight",
+        type=float,
+        default=0.80,
+        help="Stage-5 correction-teacher loss weight for actor-only distillation.",
+    )
+    parser.add_argument(
+        "--sac_stage5_teacher_action_q_uf_weight",
+        type=float,
+        default=0.05,
+        help="Stage-5 correction-teacher loss weight on the Q_uf dimension.",
+    )
+    parser.add_argument(
+        "--sac_stage5_teacher_action_q_fp_weight",
+        type=float,
+        default=2.0,
+        help="Stage-5 correction-teacher loss weight on the Q_fp dimension.",
+    )
+    parser.add_argument(
+        "--sac_stage5_teacher_correction_threshold",
+        type=float,
+        default=0.0,
+        help="Stage-5 activates the correction teacher when Q_fp correction excess exceeds this threshold.",
+    )
+    parser.add_argument(
+        "--sac_stage5_teacher_target_margin",
+        type=float,
+        default=0.0,
+        help="Stage-5 only activates the correction teacher when current mass is at least target-margin.",
+    )
+    parser.add_argument(
+        "--sac_stage5_teacher_buffer_max",
+        type=float,
+        default=1.5,
+        help="Stage-5 only activates the correction teacher when buffer volume is below this ceiling.",
     )
 
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -294,6 +616,17 @@ def parse_args():
         # selected checkpoint reflects cross-seed robustness instead of a
         # single lucky seed.
         args.eval_episodes = 3
+    if (
+        args.algo.lower() == "sac"
+        and args.checkpoint is None
+        and args.curriculum != "none"
+        and "--enable_sac_actor_prior" not in sys.argv
+    ):
+        # Scratch SAC curriculum runs are prone to collapsing into a bad
+        # high-concentration deterministic startup. Enable the handcrafted
+        # actor prior by default for these runs unless the user explicitly
+        # disables it by omission via the CLI contract.
+        args.enable_sac_actor_prior = True
     return args
 
 
@@ -560,10 +893,18 @@ def _save_epoch_history_csv(path: Path, epochs: list[dict]):
         "stage_label",
         "avg_reward",
         "avg_mass",
+        "avg_mean_c_uf",
         "avg_energy",
+        "avg_q_fp_governor_gap",
+        "avg_q_fp_execution_gap",
+        "avg_q_fp_physical_gap",
+        "avg_q_fp_correction_excess",
         "avg_safety_violations",
         "unsafe_episode_rate",
         "unsafe_step_rate",
+        "dry_run_step_rate",
+        "low_conc_step_rate",
+        "low_buffer_guard_step_rate",
         "completion_rate",
         "inband_rate",
         "avg_target_band_distance",
@@ -601,24 +942,36 @@ def _summarize_epoch_metrics(
     *,
     rewards: list[float],
     masses: list[float],
+    mean_c_ufs: list[float],
     energy: list[float],
+    q_fp_governor_gap_sum: float,
+    q_fp_execution_gap_sum: float,
+    q_fp_physical_gap_sum: float,
+    q_fp_correction_excess_sum: float,
     safety_counts: list[int],
     unsafe_episode_flags: list[int],
     total_steps: int,
     unsafe_steps: int,
     dry_run_steps: int,
     low_conc_steps: int,
+    low_buffer_guard_steps: int,
     reward_config: RewardConfig,
     stage: dict,
 ):
     avg_reward = float(np.mean(rewards)) if rewards else 0.0
     avg_mass = float(np.mean(masses)) if masses else 0.0
+    avg_mean_c_uf = float(np.mean(mean_c_ufs)) if mean_c_ufs else 0.0
     avg_energy = float(np.mean(energy)) if energy else 0.0
+    avg_q_fp_governor_gap = float(q_fp_governor_gap_sum / max(total_steps, 1))
+    avg_q_fp_execution_gap = float(q_fp_execution_gap_sum / max(total_steps, 1))
+    avg_q_fp_physical_gap = float(q_fp_physical_gap_sum / max(total_steps, 1))
+    avg_q_fp_correction_excess = float(q_fp_correction_excess_sum / max(total_steps, 1))
     avg_safety_violations = float(np.mean(safety_counts)) if safety_counts else 0.0
     unsafe_episode_rate = float(np.mean(unsafe_episode_flags)) if unsafe_episode_flags else 0.0
     unsafe_step_rate = float(unsafe_steps / max(total_steps, 1))
     dry_run_step_rate = float(dry_run_steps / max(total_steps, 1))
     low_conc_step_rate = float(low_conc_steps / max(total_steps, 1))
+    low_buffer_guard_step_rate = float(low_buffer_guard_steps / max(total_steps, 1))
 
     if stage["target_enabled"]:
         inband_rate = float(
@@ -641,12 +994,18 @@ def _summarize_epoch_metrics(
     return {
         "avg_reward": avg_reward,
         "avg_mass": avg_mass,
+        "avg_mean_c_uf": avg_mean_c_uf,
         "avg_energy": avg_energy,
+        "avg_q_fp_governor_gap": avg_q_fp_governor_gap,
+        "avg_q_fp_execution_gap": avg_q_fp_execution_gap,
+        "avg_q_fp_physical_gap": avg_q_fp_physical_gap,
+        "avg_q_fp_correction_excess": avg_q_fp_correction_excess,
         "avg_safety_violations": avg_safety_violations,
         "unsafe_episode_rate": unsafe_episode_rate,
         "unsafe_step_rate": unsafe_step_rate,
         "dry_run_step_rate": dry_run_step_rate,
         "low_conc_step_rate": low_conc_step_rate,
+        "low_buffer_guard_step_rate": low_buffer_guard_step_rate,
         "completion_rate": completion_rate,
         "inband_rate": inband_rate,
         "avg_target_band_distance": avg_target_band_distance,
@@ -673,16 +1032,23 @@ def _evaluate_agent_policy(args, agent, stage: dict, episodes: int, seed_base: i
         low_buffer_fp_threshold=args.low_buffer_fp_threshold,
         low_buffer_fp_max=args.low_buffer_fp_max,
     )
+    _configure_env_for_stage(eval_env, args, stage)
 
     rewards = []
     masses = []
+    mean_c_ufs = []
     energy = []
+    q_fp_governor_gap_sum = 0.0
+    q_fp_execution_gap_sum = 0.0
+    q_fp_physical_gap_sum = 0.0
+    q_fp_correction_excess_sum = 0.0
     safety_counts = []
     unsafe_episode_flags = []
     total_steps = 0
     unsafe_steps = 0
     dry_run_steps = 0
     low_conc_steps = 0
+    low_buffer_guard_steps = 0
 
     for episode_idx in range(int(episodes)):
         state, _ = eval_env.reset(seed=int(seed_base + episode_idx))
@@ -707,6 +1073,10 @@ def _evaluate_agent_policy(args, agent, stage: dict, episodes: int, seed_base: i
 
             episode_reward += float(reward)
             episode_steps += 1
+            q_fp_governor_gap_sum += abs(float(info.get("q_fp_governor_gap", 0.0)))
+            q_fp_execution_gap_sum += abs(float(info.get("q_fp_execution_gap", 0.0)))
+            q_fp_physical_gap_sum += abs(float(info.get("q_fp_physical_gap", 0.0)))
+            q_fp_correction_excess_sum += float(info.get("q_fp_correction_excess", 0.0))
             step_safety_violations = int(info.get("safety_violations", 0))
             episode_safety_violations += step_safety_violations
             if bool(info.get("safety_violation", False)) or step_safety_violations > 0:
@@ -715,6 +1085,8 @@ def _evaluate_agent_policy(args, agent, stage: dict, episodes: int, seed_base: i
                 episode_dry_run_steps += 1
             if bool(info.get("low_conc_violation", False)):
                 episode_low_conc_steps += 1
+            if bool(info.get("low_buffer_fp_guarded", False)):
+                low_buffer_guard_steps += 1
 
             episode_info_list.append(info)
             state = next_state
@@ -726,6 +1098,11 @@ def _evaluate_agent_policy(args, agent, stage: dict, episodes: int, seed_base: i
         )
         rewards.append(float(episode_reward))
         masses.append(float(episode_metrics.get("final_mass", 0.0)))
+        mean_c_ufs.append(
+            float(np.mean([float(item.get("c_uf", 0.0)) for item in episode_info_list]))
+            if episode_info_list
+            else 0.0
+        )
         energy.append(float(episode_metrics.get("energy_cost", 0.0)))
         safety_counts.append(int(episode_metrics.get("safety_violations", 0)))
         unsafe_episode_flags.append(1 if int(episode_metrics.get("safety_violations", 0)) > 0 else 0)
@@ -737,13 +1114,19 @@ def _evaluate_agent_policy(args, agent, stage: dict, episodes: int, seed_base: i
     return _summarize_epoch_metrics(
         rewards=rewards,
         masses=masses,
+        mean_c_ufs=mean_c_ufs,
         energy=energy,
+        q_fp_governor_gap_sum=q_fp_governor_gap_sum,
+        q_fp_execution_gap_sum=q_fp_execution_gap_sum,
+        q_fp_physical_gap_sum=q_fp_physical_gap_sum,
+        q_fp_correction_excess_sum=q_fp_correction_excess_sum,
         safety_counts=safety_counts,
         unsafe_episode_flags=unsafe_episode_flags,
         total_steps=total_steps,
         unsafe_steps=unsafe_steps,
         dry_run_steps=dry_run_steps,
         low_conc_steps=low_conc_steps,
+        low_buffer_guard_steps=low_buffer_guard_steps,
         reward_config=eval_reward_config,
         stage=stage,
     )
@@ -768,25 +1151,56 @@ def _best_model_key(
 
 def _resolve_curriculum_lengths(args):
     if args.curriculum == "none":
-        return 0, 0
+        return 0, 0, 0, 0
 
+    finetune_curriculum = bool(
+        getattr(args, "checkpoint", None)
+        and getattr(args, "checkpoint_mode", "") == "finetune"
+    )
     stage1_epochs = int(args.stage1_epochs)
     stage2_epochs = int(args.stage2_epochs)
+    stage4_epochs = max(int(getattr(args, "stage4_epochs", 0)), 0)
+    stage5_epochs = max(int(getattr(args, "stage5_epochs", 0)), 0)
+
+    # For finetune runs that are explicitly meant to perform only the final
+    # governor-gap alignment, allow the user to keep stage1/stage2 at zero
+    # instead of auto-filling them.
+    if finetune_curriculum and stage5_epochs > 0 and stage1_epochs == 0 and stage2_epochs == 0 and stage4_epochs == 0:
+        stage5_epochs = min(stage5_epochs, max(args.epochs, 1))
+        return 0, 0, 0, stage5_epochs
+    if finetune_curriculum and stage4_epochs > 0 and stage1_epochs == 0 and stage2_epochs == 0 and stage5_epochs == 0:
+        stage4_epochs = min(stage4_epochs, max(args.epochs, 1))
+        return 0, 0, stage4_epochs, 0
 
     if stage1_epochs <= 0:
-        stage1_epochs = max(2, int(round(args.epochs * 0.15)))
+        stage1_ratio = 0.10 if finetune_curriculum else 0.15
+        stage1_epochs = max(2, int(round(args.epochs * stage1_ratio)))
     if stage2_epochs <= 0:
-        stage2_epochs = max(2, int(round(args.epochs * 0.30)))
+        stage2_ratio = 0.25 if finetune_curriculum else 0.30
+        stage2_epochs = max(2, int(round(args.epochs * stage2_ratio)))
 
     if stage1_epochs + stage2_epochs >= args.epochs:
         overflow = stage1_epochs + stage2_epochs - max(args.epochs - 1, 1)
         stage2_epochs = max(1, stage2_epochs - overflow)
 
-    return stage1_epochs, stage2_epochs
+    remaining_epochs = max(args.epochs - stage1_epochs - stage2_epochs, 1)
+    if stage5_epochs >= remaining_epochs:
+        stage5_epochs = max(0, remaining_epochs - 1)
+
+    remaining_after_stage5 = max(remaining_epochs - stage5_epochs, 1)
+    if stage4_epochs >= remaining_after_stage5:
+        stage4_epochs = max(0, remaining_after_stage5 - 1)
+
+    return stage1_epochs, stage2_epochs, stage4_epochs, stage5_epochs
 
 
 def _select_curriculum_stage(epoch: int, args):
-    stage1_epochs, stage2_epochs = _resolve_curriculum_lengths(args)
+    stage1_epochs, stage2_epochs, stage4_epochs, stage5_epochs = _resolve_curriculum_lengths(args)
+    finetune_curriculum = bool(
+        getattr(args, "checkpoint", None)
+        and getattr(args, "checkpoint_mode", "") == "finetune"
+        and args.curriculum != "none"
+    )
     if args.curriculum == "none":
         return {
             "name": "final",
@@ -798,6 +1212,15 @@ def _select_curriculum_stage(epoch: int, args):
         }
 
     if epoch <= stage1_epochs:
+        if finetune_curriculum:
+            return {
+                "name": "stage1",
+                "label": "S1-ADAPT",
+                "index": 1,
+                "target_enabled": True,
+                "target_mass": float(args.target),
+                "band_tolerance": 20.0,
+            }
         return {
             "name": "stage1",
             "label": "S1-SAFE",
@@ -808,10 +1231,83 @@ def _select_curriculum_stage(epoch: int, args):
         }
 
     if epoch <= stage1_epochs + stage2_epochs:
+        if finetune_curriculum:
+            return {
+                "name": "stage2",
+                "label": "S2-ALIGN",
+                "index": 2,
+                "target_enabled": True,
+                "target_mass": float(args.target),
+                "band_tolerance": 20.0,
+            }
         return {
             "name": "stage2",
             "label": "S2-400T",
             "index": 2,
+            "target_enabled": True,
+                "target_mass": float(args.target),
+                "band_tolerance": 20.0,
+            }
+    stage5_start_epoch = max(args.epochs - stage5_epochs + 1, stage1_epochs + stage2_epochs + 1)
+    if stage5_epochs > 0 and epoch >= stage5_start_epoch:
+        return {
+            "name": "stage5",
+            "label": "S5-DISTILL",
+            "index": 5,
+            "target_enabled": True,
+            "target_mass": float(args.target),
+            "band_tolerance": 20.0,
+            "behavior_clone_weight": float(max(getattr(args, "sac_stage5_bc_weight", 0.0), 0.0)),
+            "behavior_clone_q_uf_weight": float(max(getattr(args, "sac_stage5_bc_q_uf_weight", 0.0), 0.0)),
+            "behavior_clone_q_fp_weight": float(max(getattr(args, "sac_stage5_bc_q_fp_weight", 0.0), 0.0)),
+            "teacher_action_weight": float(max(getattr(args, "sac_stage5_teacher_action_weight", 0.0), 0.0)),
+            "teacher_action_q_uf_weight": float(
+                max(getattr(args, "sac_stage5_teacher_action_q_uf_weight", 0.0), 0.0)
+            ),
+            "teacher_action_q_fp_weight": float(
+                max(getattr(args, "sac_stage5_teacher_action_q_fp_weight", 0.0), 0.0)
+            ),
+            "direct_q_fp_physical_only": bool(args.algo == "sac" and str(args.mode).upper() == "CC"),
+            "actor_only_update": True,
+            "freeze_alpha_update": True,
+            "distill_only_update": True,
+        }
+
+    stage4_start_epoch = max(
+        args.epochs - stage5_epochs - stage4_epochs + 1,
+        stage1_epochs + stage2_epochs + 1,
+    )
+
+    if stage4_epochs > 0 and epoch >= stage4_start_epoch:
+        return {
+            "name": "stage4",
+            "label": "S4-DEGOV",
+            "index": 4,
+            "target_enabled": True,
+            "target_mass": float(args.target),
+            "band_tolerance": 20.0,
+            "behavior_clone_weight": float(max(getattr(args, "sac_stage4_bc_weight", 0.0), 0.0)),
+            "behavior_clone_q_uf_weight": float(max(getattr(args, "sac_stage4_bc_q_uf_weight", 0.0), 0.0)),
+            "behavior_clone_q_fp_weight": float(max(getattr(args, "sac_stage4_bc_q_fp_weight", 0.0), 0.0)),
+            "teacher_action_weight": float(max(getattr(args, "sac_stage4_teacher_action_weight", 0.0), 0.0)),
+            "teacher_action_q_uf_weight": float(
+                max(getattr(args, "sac_stage4_teacher_action_q_uf_weight", 0.0), 0.0)
+            ),
+            "teacher_action_q_fp_weight": float(
+                max(getattr(args, "sac_stage4_teacher_action_q_fp_weight", 0.0), 0.0)
+            ),
+            "q_fp_teacher_weight": float(max(getattr(args, "sac_stage4_q_fp_teacher_weight", 0.0), 0.0)),
+            "q_fp_teacher_residual_threshold": float(
+                max(getattr(args, "sac_stage4_q_fp_teacher_threshold", 0.0), 0.0)
+            ),
+            "direct_q_fp_physical_only": bool(args.algo == "sac" and str(args.mode).upper() == "CC"),
+        }
+
+    if finetune_curriculum:
+        return {
+            "name": "stage3",
+            "label": "S3-EEI+",
+            "index": 3,
             "target_enabled": True,
             "target_mass": float(args.target),
             "band_tolerance": 20.0,
@@ -824,6 +1320,48 @@ def _select_curriculum_stage(epoch: int, args):
         "target_enabled": True,
         "target_mass": float(args.target),
         "band_tolerance": 20.0,
+    }
+
+
+def _configure_env_for_stage(env, args, stage: dict):
+    """
+    Configure environment-side governor usage for the active curriculum stage.
+
+    Design principle:
+    - early stages may keep soft governors enabled as training scaffolding;
+    - the final stage must remove those performance helpers so the policy is
+      forced to stand on its own;
+    - the low-buffer FP guard remains a hard equipment/safety protection.
+    """
+    stage_index = int(stage.get("index", 0))
+    is_cc_sac = str(getattr(args, "algo", "")).lower() == "sac" and str(getattr(args, "mode", "")).upper() == "CC"
+    soft_governors_enabled = not (is_cc_sac and stage_index >= 4)
+    direct_q_fp_physical_only = bool(args.direct_q_fp_physical_only or (is_cc_sac and stage_index >= 4))
+
+    env.enable_post_target_fp_governor = bool((not args.disable_post_target_fp_governor) and soft_governors_enabled)
+    env.enable_post_target_idle_seeker = bool(soft_governors_enabled)
+    env.enable_midcourse_quality_governor = bool(soft_governors_enabled)
+    env.enable_late_concentration_keeper = bool(soft_governors_enabled)
+    env.enable_late_target_compensator = bool(soft_governors_enabled)
+    env.enable_buffer_zero_finisher = bool((not direct_q_fp_physical_only) and soft_governors_enabled)
+    env.direct_q_fp_physical_only = bool(direct_q_fp_physical_only)
+
+    env.enable_low_buffer_fp_guard = bool(not args.disable_low_buffer_fp_guard)
+    env.low_buffer_fp_threshold = float(max(args.low_buffer_fp_threshold, 0.0))
+    env.low_buffer_fp_max = float(np.clip(args.low_buffer_fp_max, 0.0, 70.0))
+    env.low_buffer_fp_guard_max_correction = float(max(args.low_buffer_fp_guard_max_correction, 0.0))
+    env.governor_total_correction_limit = float(args.governor_total_correction_limit)
+
+    return {
+        "soft_governors": "on" if soft_governors_enabled else "off",
+        "direct_q_fp_physical_only": "on" if env.direct_q_fp_physical_only else "off",
+        "post_target_fp_governor": "on" if env.enable_post_target_fp_governor else "off",
+        "post_target_idle_seeker": "on" if env.enable_post_target_idle_seeker else "off",
+        "midcourse_quality_governor": "on" if env.enable_midcourse_quality_governor else "off",
+        "late_concentration_keeper": "on" if env.enable_late_concentration_keeper else "off",
+        "late_target_compensator": "on" if env.enable_late_target_compensator else "off",
+        "buffer_zero_finisher": "on" if env.enable_buffer_zero_finisher else "off",
+        "low_buffer_fp_guard": "on" if env.enable_low_buffer_fp_guard else "off",
     }
 
 
@@ -864,19 +1402,461 @@ def _transform_obs_for_sac(obs: np.ndarray, args) -> np.ndarray:
     return np.concatenate([arr, derived], dtype=np.float32)
 
 
+def _build_replay_action(args, action: np.ndarray, info: dict) -> np.ndarray:
+    arr = np.asarray(action, dtype=np.float32).reshape(-1).copy()
+    mode = str(args.mode).upper()
+    uf_control_mode = str(getattr(args, "uf_control_mode", "absolute")).lower()
+
+    applied_q_uf = float(info.get("applied_q_uf", arr[0] if arr.size > 0 else 0.0))
+    applied_q_uf_delta = float(info.get("applied_q_uf_delta", 0.0))
+    applied_q_fp = float(info.get("applied_q_fp", arr[1] if arr.size > 1 else 0.0))
+    actual_q_fp = float(info.get("actual_q_fp", applied_q_fp))
+    direct_q_fp_mode = bool(info.get("direct_q_fp_physical_only", False))
+
+    if mode == "DD":
+        replay_q_uf = 1.0 if applied_q_uf >= 25.0 else 0.0
+        replay_q_fp = 1.0 if applied_q_fp >= 35.0 else 0.0
+        return np.array([replay_q_uf, replay_q_fp], dtype=np.float32)
+
+    if mode == "CD":
+        replay_q_uf = applied_q_uf_delta if uf_control_mode == "delta" else applied_q_uf
+        replay_q_fp = 1.0 if applied_q_fp >= 35.0 else 0.0
+        return np.array([replay_q_uf, replay_q_fp], dtype=np.float32)
+
+    replay_q_uf = applied_q_uf_delta if uf_control_mode == "delta" else applied_q_uf
+    replay_q_fp = actual_q_fp if direct_q_fp_mode else applied_q_fp
+    return np.array([replay_q_uf, replay_q_fp], dtype=np.float32)
+
+
+def _build_teacher_action(args, stage: dict, info: dict):
+    stage5_correction_threshold = max(
+        float(getattr(args, "sac_stage5_teacher_correction_threshold", 0.0)),
+        0.0,
+    )
+    stage5_target_margin = max(
+        float(getattr(args, "sac_stage5_teacher_target_margin", 0.0)),
+        0.0,
+    )
+    stage5_buffer_max = max(
+        float(getattr(args, "sac_stage5_teacher_buffer_max", 0.0)),
+        0.0,
+    )
+    correction_excess = float(info.get("q_fp_correction_excess", 0.0))
+    low_buffer_guarded = bool(info.get("low_buffer_fp_guarded", False))
+    current_mass = float(info.get("current_mass", 0.0))
+    buffer_volume = float(info.get("buffer_volume", 0.0))
+    target_mass = float(getattr(args, "target", 400.0))
+    target_reached = bool(info.get("target_reached", False)) or current_mass >= max(target_mass - stage5_target_margin, 0.0)
+    tail_buffer_zone = buffer_volume <= stage5_buffer_max + 1e-6
+
+    # Final correction-distillation stage:
+    # only in the very late, low-buffer tail after the target is already done
+    # do we provide a teacher target, and that target is the actually feasible
+    # executed action itself. This keeps stage-5 focused on the last-mile
+    # buffer-clear / shutdown behavior instead of distorting the whole policy.
+    if (
+        stage.get("name") == "stage5"
+        and target_reached
+        and tail_buffer_zone
+        and (low_buffer_guarded or correction_excess > stage5_correction_threshold)
+    ):
+        mode = str(args.mode).upper()
+        uf_control_mode = str(getattr(args, "uf_control_mode", "absolute")).lower()
+        applied_q_uf = float(info.get("applied_q_uf", 0.0))
+        applied_q_uf_delta = float(info.get("applied_q_uf_delta", 0.0))
+        actual_q_fp = float(info.get("actual_q_fp", info.get("applied_q_fp", 0.0)))
+
+        if mode == "DD":
+            teacher_uf = 1.0 if applied_q_uf >= 25.0 else 0.0
+            teacher_fp = 1.0 if actual_q_fp >= 35.0 else 0.0
+            return np.array([teacher_uf, teacher_fp], dtype=np.float32), True
+
+        if mode == "CD":
+            teacher_uf = applied_q_uf_delta if uf_control_mode == "delta" else applied_q_uf
+            teacher_fp = 1.0 if actual_q_fp >= 35.0 else 0.0
+            return np.array([teacher_uf, teacher_fp], dtype=np.float32), True
+
+        teacher_uf = applied_q_uf_delta if uf_control_mode == "delta" else applied_q_uf
+        return np.array([teacher_uf, actual_q_fp], dtype=np.float32), True
+
+    if not bool(info.get("soft_teacher_active", False)):
+        return None, False
+
+    # Distill only the late-phase soft governors that are actually needed to
+    # close the last-mile gap after withdrawing the runtime governor chain.
+    # The current no-soft-governor baseline is already reasonably safe and has
+    # acceptable mid-course concentration; what it mainly lacks is tail-end
+    # completion / clean shutdown behavior. Excluding the midcourse quality
+    # governor avoids destabilizing the whole policy manifold during stage4.
+    tail_teacher_active = any(
+        bool(info.get(flag, False))
+        for flag in (
+            "teacher_late_target",
+            "teacher_late_concentration",
+            "teacher_post_target_idle",
+            "teacher_post_target_fp",
+            "teacher_buffer_zero_finish",
+        )
+    )
+    if not tail_teacher_active:
+        return None, False
+
+    mode = str(args.mode).upper()
+    uf_control_mode = str(getattr(args, "uf_control_mode", "absolute")).lower()
+
+    teacher_q_uf = float(info.get("soft_teacher_q_uf", 0.0))
+    teacher_q_fp = float(info.get("soft_teacher_q_fp", 0.0))
+    applied_q_uf = float(info.get("applied_q_uf", teacher_q_uf))
+    applied_q_uf_delta = float(info.get("applied_q_uf_delta", 0.0))
+    prev_q_uf = applied_q_uf - applied_q_uf_delta
+
+    if mode == "DD":
+        teacher_uf = 1.0 if teacher_q_uf >= 25.0 else 0.0
+        teacher_fp = 1.0 if teacher_q_fp >= 35.0 else 0.0
+        return np.array([teacher_uf, teacher_fp], dtype=np.float32), True
+
+    if mode == "CD":
+        teacher_uf = teacher_q_uf - prev_q_uf if uf_control_mode == "delta" else teacher_q_uf
+        if uf_control_mode == "delta":
+            teacher_uf = float(np.clip(teacher_uf, -float(args.uf_delta_max), float(args.uf_delta_max)))
+        teacher_fp = 1.0 if teacher_q_fp >= 35.0 else 0.0
+        return np.array([teacher_uf, teacher_fp], dtype=np.float32), True
+
+    teacher_uf = teacher_q_uf - prev_q_uf if uf_control_mode == "delta" else teacher_q_uf
+    if uf_control_mode == "delta":
+        teacher_uf = float(np.clip(teacher_uf, -float(args.uf_delta_max), float(args.uf_delta_max)))
+    teacher_fp = float(np.clip(teacher_q_fp, 0.0, 70.0))
+    return np.array([teacher_uf, teacher_fp], dtype=np.float32), True
+
+
+def _apply_sac_training_concentration_scout(
+    args,
+    env,
+    action: np.ndarray,
+    *,
+    epoch: int,
+    total_epochs: int,
+) -> tuple[np.ndarray, bool]:
+    """
+    Training-only action guidance for SAC.
+
+    Goal:
+    without changing the reward, let early training trajectories visit more
+    high-concentration operating regions by occasionally nudging Q_uf
+    downward during the first part of the day, while the buffer is still in a
+    comfortable range.
+    """
+    if getattr(args, "algo", "").lower() != "sac":
+        return np.asarray(action, dtype=np.float32), False
+    if not getattr(args, "enable_sac_concentration_scout", False):
+        return np.asarray(action, dtype=np.float32), False
+    if str(getattr(args, "mode", "")).upper() != "CC":
+        return np.asarray(action, dtype=np.float32), False
+    if env.timecnt >= int(getattr(args, "sac_concentration_scout_window_minutes", 180)):
+        return np.asarray(action, dtype=np.float32), False
+    if getattr(env, "fp_busy", False):
+        return np.asarray(action, dtype=np.float32), False
+    if float(getattr(env, "m_fp", 0.0)) >= float(getattr(args, "target", 400.0)):
+        return np.asarray(action, dtype=np.float32), False
+
+    c_uf = float(getattr(env, "last_c_uf", 0.0))
+    v_buf = float(getattr(env, "v_buf", 0.0))
+    cuf_target = float(getattr(args, "sac_concentration_scout_c_uf_target", 0.72))
+    vbuf_min = float(getattr(args, "sac_concentration_scout_v_buf_min", 0.5))
+    vbuf_max = float(getattr(args, "sac_concentration_scout_v_buf_max", 12.0))
+    if c_uf >= cuf_target:
+        return np.asarray(action, dtype=np.float32), False
+    if not (vbuf_min <= v_buf <= vbuf_max):
+        return np.asarray(action, dtype=np.float32), False
+
+    base_prob = float(np.clip(getattr(args, "sac_concentration_scout_prob", 0.35), 0.0, 1.0))
+    progress = float(np.clip((max(epoch, 1) - 1) / max(total_epochs - 1, 1), 0.0, 1.0))
+    scout_prob = base_prob * (1.0 - 0.75 * progress)
+    scout_prob = max(scout_prob, 0.05 * base_prob)
+    if np.random.rand() >= scout_prob:
+        return np.asarray(action, dtype=np.float32), False
+
+    arr = np.asarray(action, dtype=np.float32).reshape(-1).copy()
+    q_uf_cap = float(np.clip(getattr(args, "sac_concentration_scout_q_uf_cap", 18.0), 0.0, 50.0))
+    # If C_uf is still clearly below the desired band, force a small downward
+    # move on Q_uf so the replay buffer contains more settling trajectories.
+    extra_drop = 1.5 if c_uf < cuf_target - 0.015 else 0.75
+    desired_q_uf = min(float(getattr(env, "Q_uf", 0.0)), q_uf_cap)
+    desired_q_uf = max(min(desired_q_uf, float(getattr(env, "Q_uf", 0.0)) - extra_drop), 0.0)
+
+    uf_control_mode = str(getattr(args, "uf_control_mode", "absolute")).lower()
+    if uf_control_mode == "delta":
+        max_delta = float(getattr(args, "uf_delta_max", 5.0))
+        desired_delta = desired_q_uf - float(getattr(env, "Q_uf", 0.0))
+        arr[0] = float(np.clip(min(arr[0], desired_delta), -max_delta, max_delta))
+    else:
+        arr[0] = float(min(arr[0], desired_q_uf))
+
+    changed = bool(np.max(np.abs(arr - np.asarray(action, dtype=np.float32).reshape(-1))) > 1e-6)
+    return arr.astype(np.float32), changed
+
+
+def _apply_sac_minimal_reward_profile(config: RewardConfig, stage: dict):
+    """
+    Aggressively simplify the SAC reward.
+
+    Keep only:
+    1. progress toward the active target,
+    2. energy cost,
+    3. hard/soft constraint penalties,
+    4. terminal judgement.
+
+    Everything else is zeroed so a mature baseline can be finetuned under a
+    much cleaner objective.
+    """
+    config.reward_mode = "minimal_constraints"
+
+    # Remove secondary shaping terms.
+    config.fp_usage_weight = 0.0
+    config.post_target_fp_usage_weight = 0.0
+    config.post_target_q_uf_hold_weight = 0.0
+    config.post_target_buffer_hold_weight = 0.0
+    config.schedule_tolerance_ratio = 0.0
+    config.schedule_behind_weight = 0.0
+    config.schedule_ahead_weight = 0.0
+    config.dry_run_flow_penalty_weight = 0.0
+    config.uf_low_conc_flow_penalty_weight = 0.0
+    config.uf_conc_guidance_below_weight = 0.0
+    config.uf_conc_guidance_above_weight = 0.0
+    config.uf_conc_guidance_band_bonus = 0.0
+    config.idle_shutdown_bonus = 0.0
+    config.smoothness_weight = 0.0
+    config.pre_target_glide_margin = 0.0
+    config.pre_target_glide_scale = 0.0
+
+    stage_index = int(stage.get("index", 0))
+
+    if not bool(stage.get("target_enabled", True)):
+        config.enable_target_objective = False
+        config.throughput_reward_weight = 0.0
+        config.concentration_progress_weight = 180.0
+        config.post_target_delta_penalty_weight = 0.0
+        config.energy_cost_weight = 0.0
+        config.uf_conc_soft_low_limit = 0.66
+        config.uf_conc_low_penalty = 40.0
+        config.dry_run_buffer_threshold = 0.5
+        config.dry_run_penalty = 80.0
+        config.constraint_step_reward_block = True
+        config.target_cross_bonus = 0.0
+        config.terminal_target_band_bonus = 0.0
+        config.terminal_under_penalty_weight = 0.0
+        config.terminal_over_penalty_weight = 0.0
+        return
+
+    config.enable_target_objective = True
+    config.uf_conc_soft_low_limit = 0.66
+    config.dry_run_buffer_threshold = 0.5
+    config.constraint_step_reward_block = True
+
+    if stage_index >= 3:
+        config.throughput_reward_weight = 10.0
+        config.concentration_progress_weight = 0.0
+        config.post_target_delta_penalty_weight = 12.0
+        config.energy_cost_weight = 0.30
+        config.uf_conc_low_penalty = 60.0
+        config.dry_run_penalty = 140.0
+        config.target_cross_bonus = 60.0
+        config.terminal_target_band_bonus = 200.0
+        config.terminal_avg_cuf_threshold = 0.712
+        config.terminal_avg_cuf_bonus_weight = 5000.0
+        config.terminal_avg_cuf_penalty_weight = 4000.0
+        config.terminal_inband_over_penalty_weight = 0.0
+        config.terminal_under_penalty_weight = 20.0
+        config.terminal_under_penalty_quadratic = 0.0
+        config.terminal_over_penalty_weight = 12.0
+        config.terminal_over_penalty_quadratic = 0.0
+    else:
+        config.throughput_reward_weight = 12.0
+        config.concentration_progress_weight = 0.0
+        config.post_target_delta_penalty_weight = 8.0
+        config.energy_cost_weight = 0.10
+        config.uf_conc_low_penalty = 45.0
+        config.dry_run_penalty = 100.0
+        config.target_cross_bonus = 25.0
+        config.terminal_target_band_bonus = 350.0
+        config.terminal_inband_over_penalty_weight = 0.0
+        config.terminal_under_penalty_weight = 8.0
+        config.terminal_under_penalty_quadratic = 0.0
+        config.terminal_over_penalty_weight = 3.0
+        config.terminal_over_penalty_quadratic = 0.0
+
+
+def _apply_sac_high_conc_band(config: RewardConfig):
+    """
+    Experimental concentration target band:
+    encourage C_uf to stay around 0.73~0.74 without crossing the hard limit.
+    """
+    # Important: do not push concentration from the very beginning.
+    # First let the policy establish throughput, then gently bias it toward a
+    # higher operating region.
+    config.uf_conc_guidance_target = 0.73
+    config.uf_conc_guidance_band = 0.01
+    config.uf_conc_guidance_start_ratio = 0.35
+    config.uf_conc_guidance_mass_gate_ratio = 0.65
+    config.uf_conc_guidance_upper_soft_limit = 0.742
+    config.uf_conc_guidance_below_weight = 120.0
+    config.uf_conc_guidance_above_weight = 1200.0
+    config.uf_conc_guidance_band_bonus = 0.30
+
+
 def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
     config = RewardConfig(target_mass=float(stage["target_mass"]), max_steps=args.steps)
     config.enable_target_objective = bool(stage["target_enabled"])
     config.target_band_tolerance = float(stage["band_tolerance"])
     is_sac = getattr(args, "algo", "").lower() == "sac"
+    finetune_curriculum = bool(
+        is_sac
+        and getattr(args, "checkpoint", None)
+        and getattr(args, "checkpoint_mode", "") == "finetune"
+        and args.curriculum != "none"
+    )
 
-    if stage["name"] == "stage1":
+    if finetune_curriculum and stage["name"] == "stage1":
+        config.reward_mode = "progress_constraints"
+        config.enable_target_objective = True
+        config.throughput_reward_weight = 10.0
+        config.concentration_progress_weight = 100.0
+        config.post_target_delta_penalty_weight = 12.0
+        config.energy_cost_weight = 0.30
+        config.fp_usage_weight = 0.35
+        config.post_target_fp_usage_weight = 2.50
+        config.post_target_buffer_guard_level = 18.0
+        config.post_target_buffer_hold_weight = 8.0
+        config.uf_conc_soft_low_limit = 0.66
+        config.uf_conc_low_penalty = 60.0
+        config.dry_run_buffer_threshold = 0.5
+        config.dry_run_penalty = 140.0
+        config.dry_run_flow_penalty_weight = 70.0
+        config.uf_low_conc_flow_penalty_weight = 120.0
+        config.constraint_step_reward_block = True
+        config.target_cross_bonus = 60.0
+        config.uf_conc_penalty = 450.0
+        config.buffer_vol_penalty = 450.0
+        config.safety_violation_penalty = 1000.0
+        config.terminal_safety_block_penalty = 1800.0
+        config.terminal_target_band_bonus = 220.0
+        config.terminal_under_penalty_weight = 24.0
+        config.terminal_under_penalty_quadratic = 0.0
+        config.terminal_over_penalty_weight = 12.0
+        config.terminal_over_penalty_quadratic = 0.0
+        config.reward_clip_min = -5000.0
+        config.reward_clip_max = 2800.0
+    elif finetune_curriculum and stage["name"] == "stage2":
+        config.reward_mode = "progress_constraints"
+        config.enable_target_objective = True
+        config.throughput_reward_weight = 10.0
+        config.concentration_progress_weight = 100.0
+        config.post_target_delta_penalty_weight = 12.0
+        config.energy_cost_weight = 0.30
+        config.fp_usage_weight = 0.35
+        config.post_target_fp_usage_weight = 2.50
+        config.post_target_buffer_guard_level = 18.0
+        config.post_target_buffer_hold_weight = 8.0
+        config.uf_conc_soft_low_limit = 0.66
+        config.uf_conc_low_penalty = 60.0
+        config.dry_run_buffer_threshold = 0.5
+        config.dry_run_penalty = 140.0
+        config.dry_run_flow_penalty_weight = 70.0
+        config.uf_low_conc_flow_penalty_weight = 120.0
+        # Stage-2 is the right place to gently bias the already-safe policy
+        # toward a better concentration operating region without disturbing the
+        # early part of the episode. Keep the shaping mild and gated.
+        config.uf_conc_guidance_target = 0.72
+        config.uf_conc_guidance_band = 0.015
+        config.uf_conc_guidance_start_ratio = 0.20
+        config.uf_conc_guidance_mass_gate_ratio = 0.55
+        config.uf_conc_guidance_upper_soft_limit = 0.735
+        config.uf_conc_guidance_below_weight = 5.0
+        config.uf_conc_guidance_above_weight = 90.0
+        config.uf_conc_guidance_band_bonus = 0.20
+        config.constraint_step_reward_block = True
+        config.target_cross_bonus = 100.0
+        config.uf_conc_penalty = 450.0
+        config.buffer_vol_penalty = 450.0
+        config.safety_violation_penalty = 1000.0
+        config.terminal_safety_block_penalty = 1800.0
+        config.terminal_target_band_bonus = 240.0
+        config.terminal_avg_cuf_threshold = 0.712
+        config.terminal_avg_cuf_bonus_weight = 1000.0
+        config.terminal_avg_cuf_penalty_weight = 0.0
+        config.terminal_inband_over_penalty_weight = 1.5
+        config.terminal_under_penalty_weight = 30.0
+        config.terminal_under_penalty_quadratic = 0.0
+        config.terminal_over_penalty_weight = 12.0
+        config.terminal_over_penalty_quadratic = 0.0
+        config.reward_clip_min = -5000.0
+        config.reward_clip_max = 2800.0
+    elif finetune_curriculum and stage["name"] in {"stage3", "stage4", "stage5"}:
+        config.reward_mode = "progress_constraints"
+        config.enable_target_objective = True
+        config.throughput_reward_weight = 10.0
+        config.concentration_progress_weight = 100.0
+        config.post_target_delta_penalty_weight = 12.0
+        config.energy_cost_weight = 0.30
+        config.fp_usage_weight = 0.35
+        config.post_target_fp_usage_weight = 2.80
+        config.post_target_buffer_guard_level = 18.0
+        config.post_target_buffer_hold_weight = 8.0
+        config.post_target_q_uf_hold_weight = 8.0
+        config.post_target_q_uf_guard_level = 3.0
+        config.uf_conc_soft_low_limit = 0.66
+        config.uf_conc_low_penalty = 60.0
+        config.uf_conc_guidance_target = 0.72
+        config.uf_conc_guidance_band = 0.015
+        config.uf_conc_guidance_start_ratio = 0.0
+        config.uf_conc_guidance_mass_gate_ratio = 0.0
+        config.uf_conc_guidance_upper_soft_limit = 0.735
+        config.uf_conc_guidance_below_weight = 6.0
+        config.uf_conc_guidance_above_weight = 140.0
+        config.uf_conc_guidance_band_bonus = 0.35
+        config.dry_run_buffer_threshold = 0.5
+        config.dry_run_penalty = 140.0
+        config.dry_run_flow_penalty_weight = 70.0
+        config.uf_low_conc_flow_penalty_weight = 120.0
+        config.mixer_idle_volume_threshold = 1.5
+        config.idle_shutdown_bonus = 2.0
+        config.constraint_step_reward_block = True
+        config.target_cross_bonus = 120.0
+        config.uf_conc_penalty = 450.0
+        config.buffer_vol_penalty = 450.0
+        config.safety_violation_penalty = 1000.0
+        config.terminal_safety_block_penalty = 1800.0
+        config.terminal_target_band_bonus = 260.0
+        config.terminal_avg_cuf_threshold = 0.712
+        config.terminal_avg_cuf_bonus_weight = 5000.0
+        config.terminal_avg_cuf_penalty_weight = 4000.0
+        config.terminal_inband_over_penalty_weight = 1.5
+        config.terminal_under_penalty_weight = 36.0
+        config.terminal_under_penalty_quadratic = 0.0
+        config.terminal_over_penalty_weight = 12.0
+        config.terminal_over_penalty_quadratic = 0.0
+        config.reward_clip_min = -5000.0
+        config.reward_clip_max = 2800.0
+        if stage["name"] in {"stage4", "stage5"}:
+            # Final direct-Q_fp withdrawal stage:
+            # keep the mass target, but explicitly punish commands that rely on
+            # execution/availability clipping instead of being produced by the
+            # policy itself.
+            config.dry_run_penalty = 160.0
+            config.dry_run_flow_penalty_weight = 90.0
+            config.q_fp_schedule_gap_penalty_weight = 12.0
+            config.q_fp_actual_gap_penalty_weight = 28.0
+            config.q_fp_gap_tolerance = 2.0
+            config.guard_intervention_penalty_weight = 2.0
+            config.q_fp_correction_excess_penalty_weight = 0.35
+            config.q_fp_correction_tolerance = 2.0
+    elif stage["name"] == "stage1":
         config.enable_target_objective = False
         config.throughput_reward_weight = 0.00 if is_sac else 0.10
         config.post_target_delta_penalty_weight = 0.0
         config.pre_target_glide_margin = 180.0
         config.pre_target_glide_scale = 0.05
-        config.energy_cost_weight = 0.00 if is_sac else 0.20
+        config.energy_cost_weight = 0.05 if is_sac else 0.20
         if is_sac:
             # SAC simplified reward: progress + constraints.
             # Stage 1 progress is defined as reducing the underflow
@@ -885,10 +1865,20 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
             config.concentration_progress_weight = 200.0
             config.uf_conc_soft_low_limit = 0.66
             config.uf_conc_low_penalty = 40.0
+            config.uf_conc_guidance_target = 0.72
+            config.uf_conc_guidance_band = 0.03
+            config.uf_conc_guidance_upper_soft_limit = 0.735
+            config.uf_conc_guidance_below_weight = 30.0
+            config.uf_conc_guidance_above_weight = 220.0
+            config.uf_conc_guidance_band_bonus = 6.0
+            if args.sac_stage1_guidance_target >= 0.0:
+                config.uf_conc_guidance_target = float(args.sac_stage1_guidance_target)
+            if args.sac_stage1_upper_soft_limit >= 0.0:
+                config.uf_conc_guidance_upper_soft_limit = float(args.sac_stage1_upper_soft_limit)
             config.dry_run_buffer_threshold = 0.5
             config.dry_run_penalty = 80.0
             config.dry_run_flow_penalty_weight = 40.0
-            config.uf_low_conc_flow_penalty_weight = 60.0
+            config.uf_low_conc_flow_penalty_weight = 4000.0
             config.constraint_step_reward_block = True
         config.uf_conc_penalty = 400.0
         config.buffer_vol_penalty = 400.0
@@ -957,17 +1947,18 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
             config.post_target_delta_penalty_weight = 12.0
             config.energy_cost_weight = 0.30
             config.uf_conc_low_penalty = 60.0
-            # Keep late-stage concentration guidance disabled by default.
-            # Concentration-lifting probes are still supported through the
-            # reward code, but the stable SAC baseline should not spend
-            # throughput budget chasing a higher C_uf automatically.
+            # Keep concentration-band hooks available, but leave them mild by
+            # default; stronger high-concentration shaping is opt-in because it
+            # can harm throughput and energy if applied too aggressively.
             config.uf_conc_guidance_target = 0.68
             config.uf_conc_guidance_band = 0.02
             config.uf_conc_guidance_start_ratio = 0.0
+            config.uf_conc_guidance_mass_gate_ratio = 0.0
             config.uf_conc_guidance_upper_soft_limit = 0.68
             config.uf_conc_guidance_below_weight = 0.0
             config.uf_conc_guidance_above_weight = 0.0
             config.uf_conc_guidance_band_bonus = 0.0
+            config.idle_shutdown_bonus = 0.0
             config.dry_run_flow_penalty_weight = 70.0
             config.uf_low_conc_flow_penalty_weight = 120.0
             config.constraint_step_reward_block = True
@@ -982,6 +1973,10 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
         config.safety_violation_penalty = 1000.0
         config.terminal_safety_block_penalty = 1800.0
         config.terminal_target_band_bonus = 200.0 if is_sac else 2200.0
+        if is_sac:
+            config.terminal_avg_cuf_threshold = 0.712
+            config.terminal_avg_cuf_bonus_weight = 5000.0
+            config.terminal_avg_cuf_penalty_weight = 4000.0
         config.terminal_inband_over_penalty_weight = 1.5 if is_sac else 4.0
         config.terminal_under_penalty_weight = 20.0 if is_sac else 30.0
         config.terminal_under_penalty_quadratic = 0.0
@@ -991,6 +1986,11 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
         config.reward_clip_max = 2800.0
 
     if is_sac:
+        reward_profile = str(getattr(args, "sac_reward_profile", "progress")).lower()
+        if reward_profile == "minimal":
+            _apply_sac_minimal_reward_profile(config, stage)
+        if getattr(args, "enable_sac_high_conc_band", False) and int(stage.get("index", 0)) >= 3:
+            _apply_sac_high_conc_band(config)
         if args.sac_dry_run_penalty >= 0.0:
             config.dry_run_penalty = float(args.sac_dry_run_penalty)
         if args.sac_low_conc_penalty >= 0.0:
@@ -1003,6 +2003,47 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
             config.energy_cost_weight = float(args.sac_energy_cost_weight)
         if args.sac_smoothness_weight >= 0.0:
             config.smoothness_weight = float(args.sac_smoothness_weight)
+        if args.sac_terminal_avg_cuf_threshold >= 0.0:
+            config.terminal_avg_cuf_threshold = float(args.sac_terminal_avg_cuf_threshold)
+        if args.sac_terminal_avg_cuf_bonus_weight >= 0.0:
+            config.terminal_avg_cuf_bonus_weight = float(args.sac_terminal_avg_cuf_bonus_weight)
+        if args.sac_terminal_avg_cuf_penalty_weight >= 0.0:
+            config.terminal_avg_cuf_penalty_weight = float(args.sac_terminal_avg_cuf_penalty_weight)
+        if args.sac_target_cross_bonus >= 0.0:
+            config.target_cross_bonus = float(args.sac_target_cross_bonus)
+        if args.sac_terminal_under_penalty_weight >= 0.0:
+            config.terminal_under_penalty_weight = float(args.sac_terminal_under_penalty_weight)
+        if args.sac_terminal_over_penalty_weight >= 0.0:
+            config.terminal_over_penalty_weight = float(args.sac_terminal_over_penalty_weight)
+        if args.sac_terminal_target_band_bonus >= 0.0:
+            config.terminal_target_band_bonus = float(args.sac_terminal_target_band_bonus)
+        if args.sac_q_fp_schedule_gap_penalty >= 0.0:
+            config.q_fp_schedule_gap_penalty_weight = float(args.sac_q_fp_schedule_gap_penalty)
+        if args.sac_q_fp_actual_gap_penalty >= 0.0:
+            config.q_fp_actual_gap_penalty_weight = float(args.sac_q_fp_actual_gap_penalty)
+        if args.sac_guard_intervention_penalty >= 0.0:
+            config.guard_intervention_penalty_weight = float(args.sac_guard_intervention_penalty)
+        if args.sac_q_fp_correction_excess_penalty >= 0.0:
+            config.q_fp_correction_excess_penalty_weight = float(args.sac_q_fp_correction_excess_penalty)
+        if args.sac_q_fp_correction_tolerance >= 0.0:
+            config.q_fp_correction_tolerance = float(args.sac_q_fp_correction_tolerance)
+        if stage["name"] == "stage2":
+            if args.sac_stage2_guidance_target >= 0.0:
+                config.uf_conc_guidance_target = float(args.sac_stage2_guidance_target)
+            if args.sac_stage2_guidance_band >= 0.0:
+                config.uf_conc_guidance_band = float(args.sac_stage2_guidance_band)
+            if args.sac_stage2_guidance_start_ratio >= 0.0:
+                config.uf_conc_guidance_start_ratio = float(args.sac_stage2_guidance_start_ratio)
+            if args.sac_stage2_guidance_mass_gate_ratio >= 0.0:
+                config.uf_conc_guidance_mass_gate_ratio = float(args.sac_stage2_guidance_mass_gate_ratio)
+            if args.sac_stage2_upper_soft_limit >= 0.0:
+                config.uf_conc_guidance_upper_soft_limit = float(args.sac_stage2_upper_soft_limit)
+            if args.sac_stage2_guidance_below_weight >= 0.0:
+                config.uf_conc_guidance_below_weight = float(args.sac_stage2_guidance_below_weight)
+            if args.sac_stage2_guidance_above_weight >= 0.0:
+                config.uf_conc_guidance_above_weight = float(args.sac_stage2_guidance_above_weight)
+            if args.sac_stage2_guidance_band_bonus >= 0.0:
+                config.uf_conc_guidance_band_bonus = float(args.sac_stage2_guidance_band_bonus)
 
     return config
 
@@ -1019,6 +2060,12 @@ def _best_model_key_for_stage(
     completion_rate: float,
     inband_rate: float,
     avg_target_band_distance: float,
+    avg_mean_c_uf: float,
+    avg_q_fp_governor_gap: float,
+    avg_q_fp_execution_gap: float,
+    avg_q_fp_physical_gap: float,
+    avg_q_fp_correction_excess: float,
+    low_buffer_guard_step_rate: float,
     avg_reward: float,
 ):
     medium_constraint_rate = float(dry_run_step_rate + low_conc_step_rate)
@@ -1034,11 +2081,43 @@ def _best_model_key_for_stage(
         )
 
     if int(stage.get("index", 0)) >= 3:
+        if int(stage.get("index", 0)) >= 5:
+            return (
+                float(unsafe_step_rate),
+                float(unsafe_episode_rate),
+                -float(completion_rate),
+                float(avg_target_band_distance),
+                medium_constraint_rate,
+                float(low_buffer_guard_step_rate),
+                float(avg_q_fp_correction_excess),
+                float(avg_energy),
+                float(avg_q_fp_physical_gap),
+                float(avg_q_fp_execution_gap),
+                -float(avg_mean_c_uf),
+                -float(avg_reward),
+            )
+        if int(stage.get("index", 0)) >= 4:
+            return (
+                float(unsafe_step_rate),
+                float(unsafe_episode_rate),
+                -float(completion_rate),
+                float(avg_target_band_distance),
+                float(dry_run_step_rate),
+                float(low_buffer_guard_step_rate),
+                float(avg_q_fp_correction_excess),
+                float(avg_q_fp_physical_gap),
+                float(avg_q_fp_execution_gap),
+                float(avg_energy),
+                float(avg_q_fp_governor_gap),
+                -float(avg_mean_c_uf),
+                -float(avg_reward),
+            )
         return (
             float(unsafe_step_rate),
             float(unsafe_episode_rate),
             -float(completion_rate),
             float(avg_target_band_distance),
+            -float(avg_mean_c_uf),
             medium_constraint_rate,
             float(avg_energy),
             -float(avg_reward),
@@ -1050,6 +2129,7 @@ def _best_model_key_for_stage(
         medium_constraint_rate,
         -float(completion_rate),
         float(avg_target_band_distance),
+        -float(avg_mean_c_uf),
         float(avg_energy),
         -float(avg_reward),
     )
@@ -1135,39 +2215,105 @@ def _apply_finetune_stabilization(agent):
 
 
 def _apply_stage_transition_tuning(agent, stage: dict):
-    if stage["name"] != "stage3":
-        return {}
-
     updates = {}
 
+    if hasattr(agent, "behavior_clone_weight"):
+        target_bc_weight = float(max(stage.get("behavior_clone_weight", 0.0), 0.0))
+        target_bc_q_uf_weight = float(max(stage.get("behavior_clone_q_uf_weight", 0.35), 0.0))
+        target_bc_q_fp_weight = float(max(stage.get("behavior_clone_q_fp_weight", 1.0), 0.0))
+        agent.behavior_clone_weight = target_bc_weight
+        agent.behavior_clone_q_uf_weight = target_bc_q_uf_weight
+        agent.behavior_clone_q_fp_weight = target_bc_q_fp_weight
+        updates["behavior_clone_weight"] = float(agent.behavior_clone_weight)
+        updates["behavior_clone_q_uf_weight"] = float(agent.behavior_clone_q_uf_weight)
+        updates["behavior_clone_q_fp_weight"] = float(agent.behavior_clone_q_fp_weight)
+
+    if hasattr(agent, "teacher_action_weight"):
+        target_teacher_action_weight = float(max(stage.get("teacher_action_weight", 0.0), 0.0))
+        target_teacher_action_q_uf_weight = float(max(stage.get("teacher_action_q_uf_weight", 0.0), 0.0))
+        target_teacher_action_q_fp_weight = float(max(stage.get("teacher_action_q_fp_weight", 0.0), 0.0))
+        agent.teacher_action_weight = target_teacher_action_weight
+        agent.teacher_action_q_uf_weight = target_teacher_action_q_uf_weight
+        agent.teacher_action_q_fp_weight = target_teacher_action_q_fp_weight
+        updates["teacher_action_weight"] = float(agent.teacher_action_weight)
+        updates["teacher_action_q_uf_weight"] = float(agent.teacher_action_q_uf_weight)
+        updates["teacher_action_q_fp_weight"] = float(agent.teacher_action_q_fp_weight)
+
+    if hasattr(agent, "actor_only_update"):
+        agent.actor_only_update = bool(stage.get("actor_only_update", False))
+        updates["actor_only_update"] = bool(agent.actor_only_update)
+    if hasattr(agent, "freeze_alpha_update"):
+        agent.freeze_alpha_update = bool(stage.get("freeze_alpha_update", False))
+        updates["freeze_alpha_update"] = bool(agent.freeze_alpha_update)
+    if hasattr(agent, "distill_only_update"):
+        agent.distill_only_update = bool(stage.get("distill_only_update", False))
+        updates["distill_only_update"] = bool(agent.distill_only_update)
+
+    if hasattr(agent, "q_fp_teacher_weight"):
+        target_q_fp_teacher_weight = float(max(stage.get("q_fp_teacher_weight", 0.0), 0.0))
+        target_q_fp_teacher_threshold = float(max(stage.get("q_fp_teacher_residual_threshold", 0.0), 0.0))
+        agent.q_fp_teacher_weight = target_q_fp_teacher_weight
+        agent.q_fp_teacher_residual_threshold = target_q_fp_teacher_threshold
+        updates["q_fp_teacher_weight"] = float(agent.q_fp_teacher_weight)
+        updates["q_fp_teacher_residual_threshold"] = float(agent.q_fp_teacher_residual_threshold)
+
+    if stage["name"] not in {"stage3", "stage4", "stage5"}:
+        return updates
+
+    direct_degoving_stage = bool(stage.get("direct_q_fp_physical_only", False)) and stage["name"] in {"stage4", "stage5"}
+
     if hasattr(agent, "actor_optimizer"):
-        _scale_optimizer_lr(agent.actor_optimizer, 0.35)
-        updates["actor_lr_scale"] = 0.35
+        if stage["name"] == "stage5":
+            actor_lr_scale = 0.15
+        else:
+            actor_lr_scale = 0.08 if direct_degoving_stage else (0.20 if stage["name"] == "stage4" else 0.35)
+        _scale_optimizer_lr(agent.actor_optimizer, actor_lr_scale)
+        updates["actor_lr_scale"] = actor_lr_scale
     elif hasattr(agent, "actor_optimizers"):
         for optimizer in agent.actor_optimizers:
-            _scale_optimizer_lr(optimizer, 0.35)
-        updates["actor_lr_scale"] = 0.35
+            if stage["name"] == "stage5":
+                actor_lr_scale = 0.15
+            else:
+                actor_lr_scale = 0.08 if direct_degoving_stage else (0.20 if stage["name"] == "stage4" else 0.35)
+            _scale_optimizer_lr(optimizer, actor_lr_scale)
+        updates["actor_lr_scale"] = actor_lr_scale
 
     if hasattr(agent, "critic1_optimizer"):
-        _scale_optimizer_lr(agent.critic1_optimizer, 0.5)
-        updates["critic_lr_scale"] = 0.5
+        if stage["name"] == "stage5":
+            critic_lr_scale = 1.0
+        else:
+            critic_lr_scale = 0.15 if direct_degoving_stage else (0.35 if stage["name"] == "stage4" else 0.5)
+        _scale_optimizer_lr(agent.critic1_optimizer, critic_lr_scale)
+        updates["critic_lr_scale"] = critic_lr_scale
     if hasattr(agent, "critic2_optimizer"):
-        _scale_optimizer_lr(agent.critic2_optimizer, 0.5)
-        updates["critic_lr_scale"] = 0.5
+        if stage["name"] == "stage5":
+            critic_lr_scale = 1.0
+        else:
+            critic_lr_scale = 0.15 if direct_degoving_stage else (0.35 if stage["name"] == "stage4" else 0.5)
+        _scale_optimizer_lr(agent.critic2_optimizer, critic_lr_scale)
+        updates["critic_lr_scale"] = critic_lr_scale
 
     if hasattr(agent, "exploration_noise_np"):
-        agent.exploration_noise_np = agent.exploration_noise_np * 0.35
-        updates["exploration_noise_scale"] = 0.35
+        noise_scale = 0.20 if stage["name"] == "stage4" else 0.35
+        agent.exploration_noise_np = agent.exploration_noise_np * noise_scale
+        updates["exploration_noise_scale"] = noise_scale
 
     if hasattr(agent, "policy_noise_np") and hasattr(agent, "policy_noise"):
-        agent.policy_noise_np = agent.policy_noise_np * 0.35
+        noise_scale = 0.20 if stage["name"] == "stage4" else 0.35
+        agent.policy_noise_np = agent.policy_noise_np * noise_scale
         agent.policy_noise = torch.tensor(agent.policy_noise_np, dtype=torch.float32, device=agent.device)
-        updates["policy_noise_scale"] = 0.35
+        updates["policy_noise_scale"] = noise_scale
 
     if hasattr(agent, "noise_clip_np") and hasattr(agent, "noise_clip"):
-        agent.noise_clip_np = agent.noise_clip_np * 0.35
+        noise_scale = 0.20 if stage["name"] == "stage4" else 0.35
+        agent.noise_clip_np = agent.noise_clip_np * noise_scale
         agent.noise_clip = torch.tensor(agent.noise_clip_np, dtype=torch.float32, device=agent.device)
-        updates["noise_clip_scale"] = 0.35
+        updates["noise_clip_scale"] = noise_scale
+
+    if stage["name"] in {"stage4", "stage5"} and hasattr(agent, "alpha_optimizer") and agent.alpha_optimizer is not None:
+        alpha_lr_scale = 1.0 if stage["name"] == "stage5" else (0.15 if direct_degoving_stage else 0.35)
+        _scale_optimizer_lr(agent.alpha_optimizer, alpha_lr_scale)
+        updates["alpha_lr_scale"] = alpha_lr_scale
 
     return updates
 
@@ -1271,6 +2417,14 @@ def _build_agent(args, state_dim: int, action_dim: int, action_low=None, action_
             per_alpha=(args.sac_per_alpha if args.sac_per_alpha >= 0 else 0.0),
             reward_scale=(args.sac_reward_scale if args.sac_reward_scale >= 0 else 0.01),
             use_actor_prior=args.enable_sac_actor_prior,
+            teacher_action_weight=0.0,
+            teacher_action_q_uf_weight=max(float(getattr(args, "sac_stage4_teacher_action_q_uf_weight", 1.0)), 0.0),
+            teacher_action_q_fp_weight=max(float(getattr(args, "sac_stage4_teacher_action_q_fp_weight", 1.0)), 0.0),
+            q_fp_teacher_weight=0.0,
+            q_fp_teacher_residual_threshold=max(float(getattr(args, "sac_stage4_q_fp_teacher_threshold", 2.0)), 0.0),
+            q_fp_teacher_decision_interval=int(args.interval),
+            q_fp_teacher_q_fp_delta_max=(args.q_fp_delta_max if args.q_fp_delta_max >= 0 else -1.0),
+            q_uf_is_delta=(str(args.uf_control_mode).lower() == "delta"),
             device=args.device,
         )
         algo_name = "GRU-SAC (CC)" if args.use_gru_encoder else "SAC (CC)"
@@ -1389,7 +2543,10 @@ def train():
         enable_low_buffer_fp_guard=not args.disable_low_buffer_fp_guard,
         low_buffer_fp_threshold=args.low_buffer_fp_threshold,
         low_buffer_fp_max=args.low_buffer_fp_max,
+        low_buffer_fp_guard_max_correction=args.low_buffer_fp_guard_max_correction,
+        governor_total_correction_limit=args.governor_total_correction_limit,
     )
+    env_stage_controls = _configure_env_for_stage(env, args, current_stage)
 
     agent, algo_name = _build_agent(
         args,
@@ -1398,7 +2555,7 @@ def train():
         action_low=env.action_space.low,
         action_high=env.action_space.high,
     )
-    stage1_epochs, stage2_epochs = _resolve_curriculum_lengths(args)
+    stage1_epochs, stage2_epochs, stage4_epochs, stage5_epochs = _resolve_curriculum_lengths(args)
 
     start_epoch = 1
     best_reward = -float("inf")
@@ -1410,6 +2567,10 @@ def train():
             start_epoch, best_reward = _load_existing_log(paths["log_path"], agent)
         else:
             finetune_updates = _apply_finetune_stabilization(agent)
+
+    stage_config_updates = _apply_stage_transition_tuning(agent, current_stage)
+    if stage_config_updates:
+        finetune_updates.update(stage_config_updates)
 
     logger.info("=" * 72)
     logger.info(f"Start {algo_name} training")
@@ -1423,6 +2584,10 @@ def train():
     logger.info(
         f"Low-buffer FP guard: {'off' if args.disable_low_buffer_fp_guard else 'on'}"
     )
+    logger.info(
+        "Active env controls: "
+        + ", ".join(f"{k}={v}" for k, v in env_stage_controls.items())
+    )
     if args.mode != "DD":
         logger.info(f"Q_uf control: {args.uf_control_mode}")
         if args.uf_control_mode == "delta":
@@ -1432,14 +2597,31 @@ def train():
         if not args.disable_low_buffer_fp_guard:
             logger.info(
                 f"Low-buffer guard threshold/max: {args.low_buffer_fp_threshold} m3 / {args.low_buffer_fp_max} m3/h"
+                f" | max correction={args.low_buffer_fp_guard_max_correction} m3/h"
+                f" | governor total limit={'disabled' if args.governor_total_correction_limit < 0 else args.governor_total_correction_limit}"
             )
     logger.info(f"Target band (descriptive only): {reward_config.target_mass_low:.1f} ~ {reward_config.target_mass_high:.1f} t")
     if args.curriculum == "none":
         logger.info("Curriculum: none")
     else:
+        if args.checkpoint and args.checkpoint_mode == "finetune":
+            curriculum_text = (
+                f"Curriculum: safety_mass | stage1={stage1_epochs} ep (adapt from base) | "
+                f"stage2={stage2_epochs} ep (align target + constraints) | "
+                f"stage3={max(args.epochs - stage1_epochs - stage2_epochs - stage4_epochs - stage5_epochs, 0)} ep (EEI + mild concentration/idle shaping) | "
+                f"stage4={stage4_epochs} ep (soft-governor withdrawal) | "
+                f"stage5={stage5_epochs} ep (correction distillation)"
+            )
+        else:
+            curriculum_text = (
+                f"Curriculum: safety_mass | stage1={stage1_epochs} ep (safe only) | "
+                f"stage2={stage2_epochs} ep (safe 400t) | "
+                f"stage3={max(args.epochs - stage1_epochs - stage2_epochs - stage4_epochs - stage5_epochs, 0)} ep (safe 400t + low EEI) | "
+                f"stage4={stage4_epochs} ep (soft-governor withdrawal) | "
+                f"stage5={stage5_epochs} ep (correction distillation)"
+            )
         logger.info(
-            f"Curriculum: safety_mass | stage1={stage1_epochs} ep (safe only) | "
-            f"stage2={stage2_epochs} ep (safe 400t) | stage3={max(args.epochs - stage1_epochs - stage2_epochs, 0)} ep (safe 400t + low EEI)"
+            curriculum_text
         )
     logger.info(f"Total physical time: {args.steps * args.interval} min = {args.steps * args.interval / 60:.1f} h")
     logger.info(f"Device: {args.device}")
@@ -1451,6 +2633,8 @@ def train():
         logger.info(f"GRU encoder: {'on' if args.use_gru_encoder else 'off'}")
         if args.use_gru_encoder:
             logger.info(f"GRU hidden dim: {args.gru_hidden_dim}")
+    if args.algo == "sac":
+        logger.info(f"SAC reward profile: {args.sac_reward_profile}")
     if finetune_updates:
         logger.info(
             "Finetune stabilization | "
@@ -1471,6 +2655,15 @@ def train():
         logger.info(f"SAC PER alpha: {args.sac_per_alpha if args.sac_per_alpha >= 0 else 0.0}")
         logger.info(f"SAC reward scale: {args.sac_reward_scale if args.sac_reward_scale >= 0 else 0.01}")
         logger.info(f"SAC actor prior: {'on' if args.enable_sac_actor_prior else 'off'}")
+        logger.info(
+            "SAC concentration scout: "
+            f"{'on' if args.enable_sac_concentration_scout else 'off'} | "
+            f"prob={args.sac_concentration_scout_prob:.2f} | "
+            f"window={args.sac_concentration_scout_window_minutes} min | "
+            f"C_uf<{args.sac_concentration_scout_c_uf_target:.3f} | "
+            f"Q_uf cap={args.sac_concentration_scout_q_uf_cap:.1f} | "
+            f"V_buf={args.sac_concentration_scout_v_buf_min:.1f}-{args.sac_concentration_scout_v_buf_max:.1f}"
+        )
     if torch.cuda.is_available():
         logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
     if start_epoch > 1:
@@ -1479,18 +2672,24 @@ def train():
 
     total_steps = 0
     effective_warmup_steps = int(args.warmup_steps)
+    loaded_update_step = int(getattr(agent, "update_step", 0))
+    finetune_policy_warmup = False
     if args.checkpoint and args.checkpoint_mode == "finetune":
-        loaded_update_step = int(getattr(agent, "update_step", 0))
         if loaded_update_step > 0:
             # A pretrained checkpoint already carries mature network weights and
             # optimizer history statistics in the model parameters. For these
-            # cases, a very long replay-only warmup wastes early finetune
-            # epochs, so we respect the user-configured warmup directly.
+            # cases, warmup should avoid random actions that would destroy the
+            # learned operating regime. We therefore respect the user-configured
+            # warmup length, but keep collecting rollouts from the current
+            # policy and simply delay gradient updates.
             effective_warmup_steps = max(effective_warmup_steps, 0)
+            finetune_policy_warmup = effective_warmup_steps > 0
             logger.info(
                 f"Effective warmup steps: {effective_warmup_steps} "
                 f"(finetune from trained checkpoint, update_step={loaded_update_step})"
             )
+            if finetune_policy_warmup:
+                logger.info("Warmup rollout mode: policy-driven collection (no updates yet)")
         else:
             effective_warmup_steps = max(effective_warmup_steps, 3000)
             logger.info(f"Effective warmup steps: {effective_warmup_steps} (finetune)")
@@ -1508,9 +2707,15 @@ def train():
                 best_reward = -float("inf")
                 best_model_key = None
                 tuning_updates = _apply_stage_transition_tuning(agent, stage)
+                env_stage_controls = _configure_env_for_stage(env, args, stage)
                 tuning_text = ""
+                stage_updates = {}
                 if tuning_updates:
-                    tuning_text = " | " + ", ".join(f"{k}={v}" for k, v in tuning_updates.items())
+                    stage_updates.update(tuning_updates)
+                if env_stage_controls:
+                    stage_updates.update(env_stage_controls)
+                if stage_updates:
+                    tuning_text = " | " + ", ".join(f"{k}={v}" for k, v in stage_updates.items())
                 logger.info(
                     f"Curriculum switch -> {stage['label']} | "
                     f"target={'no-target' if not stage['target_enabled'] else f'{stage['target_mass']:.0f}t'}"
@@ -1529,13 +2734,20 @@ def train():
             epoch_start = time.time()
             epoch_rewards = []
             epoch_masses = []
+            epoch_mean_c_ufs = []
             epoch_energy = []
+            epoch_q_fp_governor_gap_sum = 0.0
+            epoch_q_fp_execution_gap_sum = 0.0
+            epoch_q_fp_physical_gap_sum = 0.0
+            epoch_q_fp_correction_excess_sum = 0.0
             epoch_safety_counts = []
             epoch_unsafe_episode_flags = []
             epoch_total_steps = 0
             epoch_unsafe_steps = 0
             epoch_dry_run_steps = 0
             epoch_low_conc_steps = 0
+            epoch_low_buffer_guard_steps = 0
+            epoch_concentration_scout_steps = 0
 
             for _ in range(args.episodes_per_epoch):
                 state, _ = env.reset()
@@ -1549,25 +2761,54 @@ def train():
                 episode_dry_run_steps = 0
                 episode_low_conc_steps = 0
                 episode_steps = 0
+                episode_c_uf_values = []
 
                 while not done:
-                    if args.algo == "sac" and total_steps < effective_warmup_steps:
+                    in_warmup = total_steps < effective_warmup_steps
+                    if args.algo == "sac" and in_warmup and not finetune_policy_warmup:
                         action = env.action_space.sample().astype(np.float32)
                     else:
                         deterministic_action = False
-                        if args.algo == "sac" and args.sac_deterministic_mix_prob > 0.0:
+                        if args.algo == "sac" and args.sac_deterministic_mix_prob > 0.0 and not in_warmup:
                             deterministic_action = bool(np.random.rand() < args.sac_deterministic_mix_prob)
                         action = agent.select_action(state, deterministic=deterministic_action)
+                    if args.algo == "sac":
+                        action, scout_changed = _apply_sac_training_concentration_scout(
+                            args,
+                            env,
+                            action,
+                            epoch=epoch,
+                            total_epochs=args.epochs,
+                        )
+                        if scout_changed:
+                            epoch_concentration_scout_steps += 1
                     next_state, reward, terminated, truncated, info = env.step(action)
                     if args.algo == "sac":
                         next_state = _transform_obs_for_sac(next_state, args)
                     done = terminated or truncated
 
-                    agent.store_transition(state, action, reward, next_state, done)
+                    replay_action = _build_replay_action(args, action, info)
+                    teacher_action, teacher_active = _build_teacher_action(args, stage, info)
+                    if args.algo == "sac":
+                        agent.store_transition(
+                            state,
+                            replay_action,
+                            reward,
+                            next_state,
+                            done,
+                            teacher_action=teacher_action,
+                            teacher_active=teacher_active,
+                        )
+                    else:
+                        agent.store_transition(state, replay_action, reward, next_state, done)
                     state = next_state
                     episode_reward += reward
                     total_steps += 1
                     episode_steps += 1
+                    epoch_q_fp_governor_gap_sum += abs(float(info.get("q_fp_governor_gap", 0.0)))
+                    epoch_q_fp_execution_gap_sum += abs(float(info.get("q_fp_execution_gap", 0.0)))
+                    epoch_q_fp_physical_gap_sum += abs(float(info.get("q_fp_physical_gap", 0.0)))
+                    epoch_q_fp_correction_excess_sum += float(info.get("q_fp_correction_excess", 0.0))
 
                     step_safety_violations = int(info.get("safety_violations", 0))
                     episode_safety_violations += step_safety_violations
@@ -1577,15 +2818,20 @@ def train():
                         episode_dry_run_steps += 1
                     if bool(info.get("low_conc_violation", False)):
                         episode_low_conc_steps += 1
+                    if bool(info.get("low_buffer_fp_guarded", False)):
+                        epoch_low_buffer_guard_steps += 1
+                    episode_c_uf_values.append(float(info.get("c_uf", 0.0)))
 
                     if total_steps > effective_warmup_steps:
                         agent.update()
 
                 final_mass = float(info.get("current_mass", info.get("final_mass", 0.0)))
+                mean_c_uf = float(np.mean(episode_c_uf_values)) if episode_c_uf_values else float(info.get("c_uf", 0.0))
                 energy = float(info.get("total_energy_cost", 0.0))
 
                 epoch_rewards.append(float(episode_reward))
                 epoch_masses.append(final_mass)
+                epoch_mean_c_ufs.append(mean_c_uf)
                 epoch_energy.append(energy)
                 epoch_safety_counts.append(int(episode_safety_violations))
                 epoch_unsafe_episode_flags.append(1 if episode_safety_violations > 0 else 0)
@@ -1603,13 +2849,19 @@ def train():
             train_metrics = _summarize_epoch_metrics(
                 rewards=epoch_rewards,
                 masses=epoch_masses,
+                mean_c_ufs=epoch_mean_c_ufs,
                 energy=epoch_energy,
+                q_fp_governor_gap_sum=epoch_q_fp_governor_gap_sum,
+                q_fp_execution_gap_sum=epoch_q_fp_execution_gap_sum,
+                q_fp_physical_gap_sum=epoch_q_fp_physical_gap_sum,
+                q_fp_correction_excess_sum=epoch_q_fp_correction_excess_sum,
                 safety_counts=epoch_safety_counts,
                 unsafe_episode_flags=epoch_unsafe_episode_flags,
                 total_steps=epoch_total_steps,
                 unsafe_steps=epoch_unsafe_steps,
                 dry_run_steps=epoch_dry_run_steps,
                 low_conc_steps=epoch_low_conc_steps,
+                low_buffer_guard_steps=epoch_low_buffer_guard_steps,
                 reward_config=reward_config,
                 stage=stage,
             )
@@ -1618,19 +2870,25 @@ def train():
                 agent,
                 stage,
                 episodes=args.eval_episodes,
-                seed_base=args.seed + epoch * 1000,
+                seed_base=int(getattr(args, "eval_seed_start", 91)),
             )
             selection_metrics = eval_metrics if eval_metrics is not None else train_metrics
             selection_source = "eval" if eval_metrics is not None else "train"
 
             avg_reward = float(selection_metrics["avg_reward"])
             avg_mass = float(selection_metrics["avg_mass"])
+            avg_mean_c_uf = float(selection_metrics["avg_mean_c_uf"])
             avg_energy = float(selection_metrics["avg_energy"])
+            avg_q_fp_governor_gap = float(selection_metrics["avg_q_fp_governor_gap"])
+            avg_q_fp_execution_gap = float(selection_metrics["avg_q_fp_execution_gap"])
+            avg_q_fp_physical_gap = float(selection_metrics["avg_q_fp_physical_gap"])
+            avg_q_fp_correction_excess = float(selection_metrics["avg_q_fp_correction_excess"])
             avg_safety_violations = float(selection_metrics["avg_safety_violations"])
             unsafe_episode_rate = float(selection_metrics["unsafe_episode_rate"])
             unsafe_step_rate = float(selection_metrics["unsafe_step_rate"])
             dry_run_step_rate = float(selection_metrics["dry_run_step_rate"])
             low_conc_step_rate = float(selection_metrics["low_conc_step_rate"])
+            low_buffer_guard_step_rate = float(selection_metrics["low_buffer_guard_step_rate"])
             completion_rate = float(selection_metrics["completion_rate"])
             inband_rate = float(selection_metrics["inband_rate"])
             avg_target_band_distance = float(selection_metrics["avg_target_band_distance"])
@@ -1679,6 +2937,12 @@ def train():
                 completion_rate=completion_rate,
                 inband_rate=inband_rate,
                 avg_target_band_distance=avg_target_band_distance,
+                avg_mean_c_uf=avg_mean_c_uf,
+                avg_q_fp_governor_gap=avg_q_fp_governor_gap,
+                avg_q_fp_execution_gap=avg_q_fp_execution_gap,
+                avg_q_fp_physical_gap=avg_q_fp_physical_gap,
+                avg_q_fp_correction_excess=avg_q_fp_correction_excess,
+                low_buffer_guard_step_rate=low_buffer_guard_step_rate,
                 avg_reward=avg_reward,
             )
             is_best = best_model_key is None or candidate_key < best_model_key
@@ -1696,12 +2960,18 @@ def train():
                 "epoch": epoch,
                 "avg_reward": avg_reward,
                 "avg_mass": avg_mass,
+                "avg_mean_c_uf": avg_mean_c_uf,
                 "avg_energy": avg_energy,
+                "avg_q_fp_governor_gap": avg_q_fp_governor_gap,
+                "avg_q_fp_execution_gap": avg_q_fp_execution_gap,
+                "avg_q_fp_physical_gap": avg_q_fp_physical_gap,
+                "avg_q_fp_correction_excess": avg_q_fp_correction_excess,
                 "avg_safety_violations": avg_safety_violations,
                 "unsafe_episode_rate": unsafe_episode_rate,
                 "unsafe_step_rate": unsafe_step_rate,
                 "dry_run_step_rate": dry_run_step_rate,
                 "low_conc_step_rate": low_conc_step_rate,
+                "low_buffer_guard_step_rate": low_buffer_guard_step_rate,
                 "stage": stage["name"],
                 "stage_label": stage["label"],
                 "stage_target_enabled": bool(stage["target_enabled"]),
@@ -1719,26 +2989,39 @@ def train():
                 "selection_source": selection_source,
                 "train_avg_reward": float(train_metrics["avg_reward"]),
                 "train_avg_mass": float(train_metrics["avg_mass"]),
+                "train_avg_mean_c_uf": float(train_metrics["avg_mean_c_uf"]),
                 "train_avg_energy": float(train_metrics["avg_energy"]),
+                "train_avg_q_fp_governor_gap": float(train_metrics["avg_q_fp_governor_gap"]),
+                "train_avg_q_fp_execution_gap": float(train_metrics["avg_q_fp_execution_gap"]),
+                "train_avg_q_fp_physical_gap": float(train_metrics["avg_q_fp_physical_gap"]),
+                "train_avg_q_fp_correction_excess": float(train_metrics["avg_q_fp_correction_excess"]),
                 "train_avg_safety_violations": float(train_metrics["avg_safety_violations"]),
                 "train_unsafe_episode_rate": float(train_metrics["unsafe_episode_rate"]),
                 "train_unsafe_step_rate": float(train_metrics["unsafe_step_rate"]),
                 "train_dry_run_step_rate": float(train_metrics["dry_run_step_rate"]),
                 "train_low_conc_step_rate": float(train_metrics["low_conc_step_rate"]),
+                "train_low_buffer_guard_step_rate": float(train_metrics["low_buffer_guard_step_rate"]),
                 "train_completion_rate": float(train_metrics["completion_rate"]),
                 "train_inband_rate": float(train_metrics["inband_rate"]),
                 "train_target_band_distance": float(train_metrics["avg_target_band_distance"]),
                 "eval_avg_reward": None if eval_metrics is None else float(eval_metrics["avg_reward"]),
                 "eval_avg_mass": None if eval_metrics is None else float(eval_metrics["avg_mass"]),
+                "eval_avg_mean_c_uf": None if eval_metrics is None else float(eval_metrics["avg_mean_c_uf"]),
                 "eval_avg_energy": None if eval_metrics is None else float(eval_metrics["avg_energy"]),
+                "eval_avg_q_fp_governor_gap": None if eval_metrics is None else float(eval_metrics["avg_q_fp_governor_gap"]),
+                "eval_avg_q_fp_execution_gap": None if eval_metrics is None else float(eval_metrics["avg_q_fp_execution_gap"]),
+                "eval_avg_q_fp_physical_gap": None if eval_metrics is None else float(eval_metrics["avg_q_fp_physical_gap"]),
+                "eval_avg_q_fp_correction_excess": None if eval_metrics is None else float(eval_metrics["avg_q_fp_correction_excess"]),
                 "eval_avg_safety_violations": None if eval_metrics is None else float(eval_metrics["avg_safety_violations"]),
                 "eval_unsafe_episode_rate": None if eval_metrics is None else float(eval_metrics["unsafe_episode_rate"]),
                 "eval_unsafe_step_rate": None if eval_metrics is None else float(eval_metrics["unsafe_step_rate"]),
                 "eval_dry_run_step_rate": None if eval_metrics is None else float(eval_metrics["dry_run_step_rate"]),
                 "eval_low_conc_step_rate": None if eval_metrics is None else float(eval_metrics["low_conc_step_rate"]),
+                "eval_low_buffer_guard_step_rate": None if eval_metrics is None else float(eval_metrics["low_buffer_guard_step_rate"]),
                 "eval_completion_rate": None if eval_metrics is None else float(eval_metrics["completion_rate"]),
                 "eval_inband_rate": None if eval_metrics is None else float(eval_metrics["inband_rate"]),
                 "eval_target_band_distance": None if eval_metrics is None else float(eval_metrics["avg_target_band_distance"]),
+                "train_concentration_scout_step_rate": float(epoch_concentration_scout_steps / max(epoch_total_steps, 1)),
                 "elapsed": float(time.time() - start_time),
                 "eta_seconds": float(eta_seconds),
             }
@@ -1759,11 +3042,18 @@ def train():
                 f"Rwd {avg_reward:+8.2f} | "
                 f"Mass {avg_mass:7.2f}/"
                 f"{'safe' if not stage['target_enabled'] else f'{reward_config.target_mass_low:.0f}-{reward_config.target_mass_high:.0f}'} | "
+                f"Cuf {avg_mean_c_uf:6.4f} | "
                 f"Energy {avg_energy:8.2f} | "
+                f"Gov {avg_q_fp_governor_gap:5.2f} | "
+                f"Exec {avg_q_fp_execution_gap:5.2f} | "
+                f"Phys {avg_q_fp_physical_gap:5.2f} | "
+                f"CorrEx {avg_q_fp_correction_excess:5.2f} | "
                 f"UnsafeEp {unsafe_episode_rate:5.1%} | "
                 f"UnsafeSt {unsafe_step_rate:5.1%} | "
                 f"Dry {dry_run_step_rate:5.1%} | "
                 f"LowC {low_conc_step_rate:5.1%} | "
+                f"Guard {low_buffer_guard_step_rate:5.1%} | "
+                f"Scout {summary['train_concentration_scout_step_rate']:5.1%} | "
                 f"Meet {completion_rate:5.1%} | "
                 f"Band {inband_rate:5.1%} | "
                 f"{'*BEST*' if is_best else '      '} | "
@@ -1774,11 +3064,17 @@ def train():
                     "TrainStats | "
                     f"Rwd {train_metrics['avg_reward']:+8.2f} | "
                     f"Mass {train_metrics['avg_mass']:7.2f} | "
+                    f"Cuf {train_metrics['avg_mean_c_uf']:6.4f} | "
                     f"Energy {train_metrics['avg_energy']:8.2f} | "
+                    f"Gov {train_metrics['avg_q_fp_governor_gap']:5.2f} | "
+                    f"Exec {train_metrics['avg_q_fp_execution_gap']:5.2f} | "
+                    f"Phys {train_metrics['avg_q_fp_physical_gap']:5.2f} | "
+                    f"CorrEx {train_metrics['avg_q_fp_correction_excess']:5.2f} | "
                     f"UnsafeEp {train_metrics['unsafe_episode_rate']:5.1%} | "
                     f"UnsafeSt {train_metrics['unsafe_step_rate']:5.1%} | "
                     f"Dry {train_metrics['dry_run_step_rate']:5.1%} | "
-                    f"LowC {train_metrics['low_conc_step_rate']:5.1%}"
+                    f"LowC {train_metrics['low_conc_step_rate']:5.1%} | "
+                    f"Guard {train_metrics['low_buffer_guard_step_rate']:5.1%}"
                 )
 
             if args.curriculum == "none":

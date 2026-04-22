@@ -28,11 +28,21 @@ class BufferPressModel:
         mass_buf = c_aver * v_buf * self.thickener.c2d(c_aver)
         mass_in = c_uf * q_uf * self.thickener.c2d(c_uf) / 60.0
 
-        v_out = min(v_out, v_buf)
-        mass_out = c_aver * v_out * self.thickener.c2d(c_aver)
+        # Minute-level perfectly mixed balance:
+        # the press can consume both the existing buffer inventory and the
+        # fresh underflow that arrives within the same minute.
+        available_volume = max(v_buf + v_in, 0.0)
+        available_mass = max(mass_buf + mass_in, 0.0)
+        v_out = min(max(v_out, 0.0), available_volume)
 
-        mass_buf = mass_buf + mass_in - mass_out
-        v_buf_new = v_buf + v_in - v_out
+        if available_volume <= 1e-9 or available_mass <= 0.0:
+            mass_out = 0.0
+            mass_buf = 0.0
+            v_buf_new = max(available_volume - v_out, 0.0)
+        else:
+            mass_out = available_mass * (v_out / available_volume)
+            mass_buf = max(available_mass - mass_out, 0.0)
+            v_buf_new = max(available_volume - v_out, 0.0)
 
         if v_buf_new <= 1e-6:
             v_buf_new = 0.0
