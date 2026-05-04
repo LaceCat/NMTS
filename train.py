@@ -58,6 +58,31 @@ def parse_args():
         help="Disable the post-target filter-press governor so the policy runs without terminal post-processing.",
     )
     parser.add_argument(
+        "--disable_post_target_idle_seeker",
+        action="store_true",
+        help="Disable the post-target idle seeker during training.",
+    )
+    parser.add_argument(
+        "--disable_midcourse_quality_governor",
+        action="store_true",
+        help="Disable the midcourse quality governor during training.",
+    )
+    parser.add_argument(
+        "--disable_late_concentration_keeper",
+        action="store_true",
+        help="Disable the late concentration keeper during training.",
+    )
+    parser.add_argument(
+        "--disable_late_target_compensator",
+        action="store_true",
+        help="Disable the late target compensator during training.",
+    )
+    parser.add_argument(
+        "--disable_buffer_zero_finisher",
+        action="store_true",
+        help="Disable the small residual buffer zero-finisher during training.",
+    )
+    parser.add_argument(
         "--q_fp_delta_max",
         type=float,
         default=2.0,
@@ -1339,11 +1364,23 @@ def _configure_env_for_stage(env, args, stage: dict):
     direct_q_fp_physical_only = bool(args.direct_q_fp_physical_only or (is_cc_sac and stage_index >= 4))
 
     env.enable_post_target_fp_governor = bool((not args.disable_post_target_fp_governor) and soft_governors_enabled)
-    env.enable_post_target_idle_seeker = bool(soft_governors_enabled)
-    env.enable_midcourse_quality_governor = bool(soft_governors_enabled)
-    env.enable_late_concentration_keeper = bool(soft_governors_enabled)
-    env.enable_late_target_compensator = bool(soft_governors_enabled)
-    env.enable_buffer_zero_finisher = bool((not direct_q_fp_physical_only) and soft_governors_enabled)
+    env.enable_post_target_idle_seeker = bool(
+        (not getattr(args, "disable_post_target_idle_seeker", False)) and soft_governors_enabled
+    )
+    env.enable_midcourse_quality_governor = bool(
+        (not getattr(args, "disable_midcourse_quality_governor", False)) and soft_governors_enabled
+    )
+    env.enable_late_concentration_keeper = bool(
+        (not getattr(args, "disable_late_concentration_keeper", False)) and soft_governors_enabled
+    )
+    env.enable_late_target_compensator = bool(
+        (not getattr(args, "disable_late_target_compensator", False)) and soft_governors_enabled
+    )
+    env.enable_buffer_zero_finisher = bool(
+        (not getattr(args, "disable_buffer_zero_finisher", False))
+        and (not direct_q_fp_physical_only)
+        and soft_governors_enabled
+    )
     env.direct_q_fp_physical_only = bool(direct_q_fp_physical_only)
 
     env.enable_low_buffer_fp_guard = bool(not args.disable_low_buffer_fp_guard)
@@ -1639,7 +1676,7 @@ def _apply_sac_minimal_reward_profile(config: RewardConfig, stage: dict):
         config.energy_cost_weight = 0.0
         config.uf_conc_soft_low_limit = 0.66
         config.uf_conc_low_penalty = 40.0
-        config.dry_run_buffer_threshold = 0.5
+        config.dry_run_buffer_threshold = 0.0
         config.dry_run_penalty = 80.0
         config.constraint_step_reward_block = True
         config.target_cross_bonus = 0.0
@@ -1650,7 +1687,7 @@ def _apply_sac_minimal_reward_profile(config: RewardConfig, stage: dict):
 
     config.enable_target_objective = True
     config.uf_conc_soft_low_limit = 0.66
-    config.dry_run_buffer_threshold = 0.5
+    config.dry_run_buffer_threshold = 0.0
     config.constraint_step_reward_block = True
 
     if stage_index >= 3:
@@ -1729,7 +1766,7 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
         config.post_target_buffer_hold_weight = 8.0
         config.uf_conc_soft_low_limit = 0.66
         config.uf_conc_low_penalty = 60.0
-        config.dry_run_buffer_threshold = 0.5
+        config.dry_run_buffer_threshold = 0.0
         config.dry_run_penalty = 140.0
         config.dry_run_flow_penalty_weight = 70.0
         config.uf_low_conc_flow_penalty_weight = 120.0
@@ -1759,7 +1796,7 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
         config.post_target_buffer_hold_weight = 8.0
         config.uf_conc_soft_low_limit = 0.66
         config.uf_conc_low_penalty = 60.0
-        config.dry_run_buffer_threshold = 0.5
+        config.dry_run_buffer_threshold = 0.0
         config.dry_run_penalty = 140.0
         config.dry_run_flow_penalty_weight = 70.0
         config.uf_low_conc_flow_penalty_weight = 120.0
@@ -1814,7 +1851,7 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
         config.uf_conc_guidance_below_weight = 6.0
         config.uf_conc_guidance_above_weight = 140.0
         config.uf_conc_guidance_band_bonus = 0.35
-        config.dry_run_buffer_threshold = 0.5
+        config.dry_run_buffer_threshold = 0.0
         config.dry_run_penalty = 140.0
         config.dry_run_flow_penalty_weight = 70.0
         config.uf_low_conc_flow_penalty_weight = 120.0
@@ -1875,7 +1912,7 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
                 config.uf_conc_guidance_target = float(args.sac_stage1_guidance_target)
             if args.sac_stage1_upper_soft_limit >= 0.0:
                 config.uf_conc_guidance_upper_soft_limit = float(args.sac_stage1_upper_soft_limit)
-            config.dry_run_buffer_threshold = 0.5
+            config.dry_run_buffer_threshold = 0.0
             config.dry_run_penalty = 80.0
             config.dry_run_flow_penalty_weight = 40.0
             config.uf_low_conc_flow_penalty_weight = 4000.0
@@ -1904,7 +1941,7 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
             config.energy_cost_weight = 0.10
             config.uf_conc_soft_low_limit = 0.66
             config.uf_conc_low_penalty = 45.0
-            config.dry_run_buffer_threshold = 0.5
+            config.dry_run_buffer_threshold = 0.0
             config.dry_run_penalty = 100.0
             config.dry_run_flow_penalty_weight = 50.0
             config.uf_low_conc_flow_penalty_weight = 80.0
@@ -1966,7 +2003,7 @@ def _build_reward_config_for_stage(args, stage: dict) -> RewardConfig:
             # treating 399.x t as "good enough" while keeping the overall
             # economic pressure unchanged.
             config.target_cross_bonus = 60.0
-        config.dry_run_buffer_threshold = 0.5
+        config.dry_run_buffer_threshold = 0.0
         config.dry_run_penalty = 140.0 if is_sac else 200.0
         config.uf_conc_penalty = 450.0
         config.buffer_vol_penalty = 450.0
@@ -2173,6 +2210,11 @@ def _apply_finetune_stabilization(agent):
         _scale_optimizer_lr(agent.critic2_optimizer, 0.05)
         updates["critic_lr_scale"] = 0.05
         updates["critic_optimizer_reset"] = True
+    if hasattr(agent, "optimizer"):
+        _reset_optimizer_state(agent.optimizer)
+        _scale_optimizer_lr(agent.optimizer, 0.005)
+        updates["optimizer_lr_scale"] = 0.005
+        updates["optimizer_reset"] = True
     if hasattr(agent, "alpha_optimizer"):
         _reset_optimizer_state(agent.alpha_optimizer)
         _scale_optimizer_lr(agent.alpha_optimizer, 0.05)
@@ -2182,7 +2224,10 @@ def _apply_finetune_stabilization(agent):
     if hasattr(agent, "action_range_np"):
         action_range = np.asarray(agent.action_range_np, dtype=np.float32)
     elif hasattr(agent, "q_uf_high") and hasattr(agent, "q_uf_low"):
-        action_range = np.asarray([float(agent.q_uf_high) - float(agent.q_uf_low), 70.0], dtype=np.float32)
+        # HybridTD3 only applies Gaussian noise to the continuous Q_uf branch.
+        # Q_fp is Bernoulli/discrete, so including it here would broadcast the
+        # Q_uf noise to two columns and break the GRU critic action dimension.
+        action_range = np.asarray([float(agent.q_uf_high) - float(agent.q_uf_low)], dtype=np.float32)
     else:
         action_range = None
 
@@ -2206,6 +2251,14 @@ def _apply_finetune_stabilization(agent):
     if hasattr(agent, "discrete_exploration_prob"):
         agent.discrete_exploration_prob = min(float(agent.discrete_exploration_prob), 0.02)
         updates["discrete_exploration_prob"] = float(agent.discrete_exploration_prob)
+
+    if hasattr(agent, "epsilon_start") and hasattr(agent, "epsilon_end"):
+        agent.epsilon_start = min(float(agent.epsilon_start), 0.01)
+        agent.epsilon_end = min(float(agent.epsilon_end), 0.002)
+        if hasattr(agent, "epsilon_decay_steps"):
+            agent.epsilon_decay_steps = min(int(agent.epsilon_decay_steps), 10_000)
+        updates["epsilon_start"] = float(agent.epsilon_start)
+        updates["epsilon_end"] = float(agent.epsilon_end)
 
     if hasattr(agent, "policy_freq"):
         agent.policy_freq = max(int(agent.policy_freq), 20)

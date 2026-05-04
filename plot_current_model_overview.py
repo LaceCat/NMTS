@@ -166,7 +166,13 @@ def rollout(args: argparse.Namespace) -> tuple[list[dict], list[dict]]:
                 "late_target_compensated": bool(info.get("late_target_compensated", False)),
                 "late_concentration_kept": bool(info.get("late_concentration_kept", False)),
                 "post_target_idle_seeking": bool(info.get("post_target_idle_seeking", False)),
-                "buffer_below_idle_threshold": bool(info.get("buffer_below_idle_threshold", False)),
+                "buffer_below_idle_threshold": bool(
+                    info.get(
+                        "buffer_below_idle_threshold",
+                        not bool(info.get("buffer_running_now", False)),
+                    )
+                ),
+                "buffer_running_now": bool(info.get("buffer_running_now", False)),
                 "fp_busy": bool(info.get("fp_busy", False)),
                 "q_fp_prestop_tapered": bool(info.get("q_fp_prestop_tapered", False)),
                 "q_fp_slew_limited": bool(info.get("q_fp_slew_limited", False)),

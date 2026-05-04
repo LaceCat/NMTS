@@ -102,6 +102,7 @@ class ThickenerDewateringEnv(gym.Env):
         late_target_q_fp_min_buffer: float = 1.0,
         mixer_idle_volume_threshold: float = 0.05,
         mixer_power_off_volume_threshold: float = 1.5,
+        buffer_running_volume_threshold: float = 2.0,
         enable_buffer_zero_finisher: bool = True,
         buffer_zero_finish_threshold: float = 2.0,
         direct_q_fp_physical_only: bool = False,
@@ -170,6 +171,9 @@ class ThickenerDewateringEnv(gym.Env):
         self.mixer_idle_volume_threshold = float(max(mixer_idle_volume_threshold, 0.0))
         self.mixer_power_off_volume_threshold = float(
             max(mixer_power_off_volume_threshold, self.mixer_idle_volume_threshold)
+        )
+        self.buffer_running_volume_threshold = float(
+            max(buffer_running_volume_threshold, self.mixer_idle_volume_threshold)
         )
         self.enable_buffer_zero_finisher = bool(enable_buffer_zero_finisher)
         self.buffer_zero_finish_threshold = float(max(buffer_zero_finish_threshold, 0.0))
@@ -368,6 +372,20 @@ class ThickenerDewateringEnv(gym.Env):
         if self.v_buf <= self.mixer_idle_volume_threshold:
             return 0.0
         return float(self.c_aver * self.v_buf * self.thickener.c2d(self.c_aver))
+
+    def _is_buffer_running(self, v_buf: float, batch_progress_mass: float) -> bool:
+        """
+        Mixer/buffer running semantics:
+        1) run when buffer volume is at least 2.0;
+        2) or when a filter-press batch has already started and buffer is not empty;
+        3) never run on an empty buffer just because a stale batch-progress counter is positive.
+        """
+        v_buf = float(max(v_buf, 0.0))
+        batch_progress_mass = float(max(batch_progress_mass, 0.0))
+        return bool(
+            v_buf >= self.buffer_running_volume_threshold - 1e-6
+            or (batch_progress_mass > 1e-9 and v_buf > 1e-6)
+        )
 
     def _make_base_obs(self, c_uf: float, mass_buf: float) -> list[float]:
         price = self.pricing.get_price(self.timecnt)
@@ -892,13 +910,47 @@ class ThickenerDewateringEnv(gym.Env):
         changed = bool(abs(governed_q_uf - q_uf) > 1e-6 or abs(governed_q_fp - q_fp) > 1e-6)
         return governed_q_uf, governed_q_fp, changed
 
-    def reset(self, seed: Optional[int] = None, options=None):
+    def _resolve_reset_start_time(
+        self,
+        start_t: Optional[float],
+        init_state: Optional[Dict],
+        options,
+    ) -> int:
+        """
+        Resolve a reset start minute with backward-compatible priority:
+        1) init_state["t"]
+        2) start_t argument
+        3) options["start_t"] (Gymnasium-style)
+
+        The result is clipped into [0, total_minutes].
+        """
+        resolved_t = None
+        if isinstance(init_state, dict) and "t" in init_state:
+            resolved_t = init_state["t"]
+        elif start_t is not None:
+            resolved_t = start_t
+        elif isinstance(options, dict) and "start_t" in options:
+            resolved_t = options["start_t"]
+
+        if resolved_t is None:
+            return 0
+        return int(np.clip(float(resolved_t), 0.0, float(self.total_minutes)))
+
+    def reset(
+        self,
+        seed: Optional[int] = None,
+        options=None,
+        start_t: Optional[float] = None,
+        init_state: Optional[Dict] = None,
+    ):
         super().reset(seed=seed)
         if seed is not None:
             np.random.seed(seed)
 
         self._init_state()
         self._sample_feed_conditions()
+
+        start_minute = self._resolve_reset_start_time(start_t, init_state, options)
 
         self.thickener_state = DEFAULT_THICKENER_STATE.copy()
         self.last_c_uf = float(self.thickener.d2c(self.thickener_state[-1] / 1e6))
@@ -907,8 +959,8 @@ class ThickenerDewateringEnv(gym.Env):
         self.prev_q_uf = 0.0
         self.prev_q_fp = 0.0
         self.last_actual_q_fp_minute = 0.0
-        self.timecnt = 0
-        self.policy_stepcnt = 0
+        self.timecnt = start_minute
+        self.policy_stepcnt = min(self.max_steps, int(start_minute // self.decision_interval))
         self.m_fp = 0.0
         self.v_buf = 0.0
         self.c_aver = self.last_c_uf
@@ -940,7 +992,12 @@ class ThickenerDewateringEnv(gym.Env):
             for _ in range(self.STATE_HISTORY_STEPS)
         ]
         obs = self._make_obs(c_uf, mass_buf)
-        return obs, {}
+        info = {
+            "start_t": float(self.timecnt),
+            "current_price": float(self.pricing.get_price(self.timecnt)),
+            "policy_step_start": int(self.policy_stepcnt),
+        }
+        return obs, info
 
     def step(self, action: np.ndarray):
         current_mass_buf = self._compute_mass_buf()
@@ -1045,6 +1102,7 @@ class ThickenerDewateringEnv(gym.Env):
         minute_trace_q_fp_env = []
         minute_trace_q_fp_cmd = []
         minute_trace_fp_busy = []
+        minute_trace_buffer_running = []
         minute_trace_v_buf = []
         minute_trace_c_uf = []
         minute_trace_c_aver = []
@@ -1097,6 +1155,7 @@ class ThickenerDewateringEnv(gym.Env):
             minute_trace_q_fp_env.append(float(effective_q_fp))
             minute_trace_q_fp_cmd.append(float(commanded_q_fp))
             minute_trace_fp_busy.append(bool(executed_fp_busy_now))
+            minute_trace_buffer_running.append(bool(not mixer_idle_now))
             minute_trace_v_buf.append(float(self.v_buf))
             minute_trace_c_uf.append(float(c_uf))
             minute_trace_c_aver.append(float(self.c_aver))
@@ -1139,6 +1198,8 @@ class ThickenerDewateringEnv(gym.Env):
         self.last_post_target_fp_governed = bool(post_target_governed_minutes > 0)
         self.last_post_target_idle_seeking = bool(self.last_post_target_idle_seeking or post_target_idle_minutes > 0)
         self.last_low_buffer_fp_guarded = bool(low_buffer_guarded_minutes > 0)
+        final_batch_progress_mass = 0.0 if self.fp_busy else float(self.fp_cycle_mass)
+        final_buffer_running_now = self._is_buffer_running(self.v_buf, final_batch_progress_mass)
 
         delta_m_fp = self.m_fp - prev_m_fp
         is_safe = (safety_violations == 0)
@@ -1322,7 +1383,10 @@ class ThickenerDewateringEnv(gym.Env):
             "c_uf": float(final_c_uf),
             "buffer_volume": float(self.v_buf),
             "episode_mean_c_uf": float(episode_mean_c_uf),
-            "buffer_below_idle_threshold": bool(self.v_buf <= self.mixer_power_off_volume_threshold + 1e-6),
+            "buffer_running_now": bool(final_buffer_running_now),
+            "buffer_below_idle_threshold": bool(not final_buffer_running_now),
+            "buffer_running_minutes": int(max(minutes_this_step - mixer_idle_minutes, 0)),
+            "buffer_running_fraction": float(max(minutes_this_step - mixer_idle_minutes, 0) / max(minutes_this_step, 1)),
             "safety_violation": not is_safe,
             "safety_violations": safety_violations,
             "dry_run_violation": bool(dry_run_minutes > 0),
@@ -1355,6 +1419,7 @@ class ThickenerDewateringEnv(gym.Env):
             "minute_trace_q_fp_env": minute_trace_q_fp_env,
             "minute_trace_q_fp_cmd": minute_trace_q_fp_cmd,
             "minute_trace_fp_busy": minute_trace_fp_busy,
+            "minute_trace_buffer_running": minute_trace_buffer_running,
             "minute_trace_v_buf": minute_trace_v_buf,
             "minute_trace_c_uf": minute_trace_c_uf,
             "minute_trace_c_aver": minute_trace_c_aver,
@@ -1446,14 +1511,15 @@ class ThickenerDewateringEnv(gym.Env):
             self.v_buf = 0.0
             self.c_aver = c_uf
 
-        # Separate "true empty" from "power-off zone":
-        # - true empty still snaps to zero only at a tiny physical threshold;
-        # - mixer standby power is disabled earlier once buffer inventory is
-        #   already very low, even if the filter press is still allowed to run.
-        low_buffer_idle_now = bool(self.v_buf <= self.mixer_power_off_volume_threshold + 1e-6)
+        delta_m_fp = self.m_fp - prev_m_fp
+        self.last_delta_m_fp_step = float(delta_m_fp)
+        batch_triggered = self._update_fp_batch_state(delta_m_fp)
+        batch_progress_mass = 0.0 if (batch_triggered or self.fp_busy) else float(self.fp_cycle_mass)
+        buffer_running_now = self._is_buffer_running(self.v_buf, batch_progress_mass)
+        low_buffer_idle_now = not buffer_running_now
 
         p_uf = 30 * (effective_q_uf / 50) ** 3 if effective_q_uf > 1e-6 else 0
-        p_buff = 30 if not low_buffer_idle_now else 0
+        p_buff = 30 if buffer_running_now else 0
         p_fp = 90 * (actual_q_fp / 70) ** 3 if actual_q_fp > 1e-6 else 0
 
         current_price = self.pricing.get_price(self.timecnt)
@@ -1467,9 +1533,6 @@ class ThickenerDewateringEnv(gym.Env):
             and self.v_buf < self._active_dry_run_threshold()
         )
         low_conc_now = bool(c_uf < self.reward_config.uf_conc_soft_low_limit)
-        delta_m_fp = self.m_fp - prev_m_fp
-        self.last_delta_m_fp_step = float(delta_m_fp)
-        batch_triggered = self._update_fp_batch_state(delta_m_fp)
         self.timecnt += 1
 
         return (

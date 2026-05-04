@@ -1,0 +1,68 @@
+{
+  "checkpoint": "F:\\毕设\\claude-code\\runs\\sac_cc_stage4_bc12_energyfirst_v1\\checkpoints\\best_model.pth",
+  "final_model": "F:\\毕设\\claude-code\\runs\\sac_cc_repair_qfp_feasible_v7_offset_m1\\checkpoints\\final_model.pth",
+  "args": {
+    "checkpoint": "runs\\sac_cc_stage4_bc12_energyfirst_v1\\checkpoints\\best_model.pth",
+    "output_dir": "runs\\sac_cc_repair_qfp_feasible_v7_offset_m1",
+    "target": 400.0,
+    "steps": 288,
+    "interval": 5,
+    "uf_delta_max": 3.0,
+    "q_fp_delta_max": 12.0,
+    "rounds": 1,
+    "collect_seeds": "91,92,93,94,95",
+    "eval_seeds": "91,92,93,94,95",
+    "train_epochs": 1400,
+    "batch_size": 256,
+    "lr": 0.00035,
+    "qfp_weight": 1.0,
+    "qfp_bias_weight": 3.0,
+    "qfp_target_offset": -1.0,
+    "train_backbone": true,
+    "q_uf_anchor_weight": 10.0,
+    "direct_q_fp_physical_only": false,
+    "disable_soft_governors": false,
+    "device": "cpu"
+  },
+  "history": [
+    {
+      "round": 0,
+      "eval": {
+        "mean_final_mass": 400.2160366553842,
+        "std_final_mass": 0.18291536186418822,
+        "mean_final_energy": 95.05122634569122,
+        "std_final_energy": 1.021146829769882,
+        "mean_c_uf": 0.7189820656981791,
+        "dry_run_step_rate": 0.7951388888888888,
+        "unsafe_step_rate": 0.0,
+        "low_conc_step_rate": 0.010416666666666666,
+        "mean_qfp_actual_gap": 12.230131463622646
+      }
+    },
+    {
+      "round": 1,
+      "collect": {
+        "mass": 400.2160366553842,
+        "energy": 95.05122634569122,
+        "dry_rate": 0.7951388888888888,
+        "unsafe_rate": 0.0
+      },
+      "train": {
+        "loss": 0.006166649982333183,
+        "qfp_mae": 2.5461604595184326
+      },
+      "eval": {
+        "mean_final_mass": 400.2050975094859,
+        "std_final_mass": 0.08002384828038447,
+        "mean_final_energy": 111.19463770411487,
+        "std_final_energy": 1.413898598947571,
+        "mean_c_uf": 0.7165034714025958,
+        "dry_run_step_rate": 0.1701388888888889,
+        "unsafe_step_rate": 0.0,
+        "low_conc_step_rate": 0.010416666666666666,
+        "mean_qfp_actual_gap": 1.3548722589369884
+      },
+      "dataset_size": 1440
+    }
+  ]
+}

@@ -84,7 +84,10 @@ class RewardConfig:
     # filter-press dry-run and underflow concentration below 0.66 are both
     # undesirable and should be penalized explicitly, but they are intentionally
     # lighter than hard unsafe events such as overflow or excessive C_uf.
-    dry_run_buffer_threshold: float = 0.5
+    # The improved physical environment clips filter-press withdrawal at the
+    # available inventory. A dry-run should therefore mean attempting to pull
+    # below zero inventory, not merely operating with a small positive buffer.
+    dry_run_buffer_threshold: float = 0.0
     dry_run_penalty: float = 200.0
     # Dense dry-run guidance:
     # when the buffer is near empty, keeping Q_fp high is already a bad control

@@ -1,16 +1,17 @@
 {
   "continuous_model": {
-    "name": "CC-SAC ft2 (crossbonus + multiseed)",
+    "name": "CC-SAC low-energy repaired (stage4 bc12 energy-first)",
     "mode": "CC",
     "algo": "sac",
-    "checkpoint": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\checkpoint\\best_model.pth",
-    "source_run": "F:\\毕设\\claude-code\\runs\\sac_cc_v2_crossbonus_multiseed_ft2",
+    "checkpoint": "F:\\毕设\\claude-code\\archives\\cc_sac_lowenergy_repaired_20260429\\checkpoint\\best_model.pth",
+    "source_run": "F:\\毕设\\claude-code\\runs\\sac_cc_stage4_bc12_energyfirst_v1",
     "uf_control_mode": "delta",
     "uf_delta_max": 3.0,
     "q_fp_delta_max": 12.0,
     "post_target_fp_governor": false,
     "low_buffer_fp_guard": true,
-    "selection_reason": "Current official continuous-control SAC model. Chosen under the principle: zero unsafe first, then stable >=400 t across seeds, while keeping energy low.",
+    "dry_run_buffer_threshold": 0.0,
+    "selection_reason": "Restored the previous low-energy continuous single-layer SAC behavior after adapting the environment dry-run semantics to the improved environment: dry-run is now tied to below-zero inventory rather than a positive 0.5 m3 soft threshold. The archived evaluation disables the optional midcourse/late soft governors.",
     "evaluation_summary_5seeds": {
       "seeds": [
         91,
@@ -19,20 +20,85 @@
         94,
         95
       ],
-      "mass_mean": 400.12752976220884,
-      "mass_std": 0.12046735559535153,
-      "energy_mean": 550.7393707469915,
-      "energy_std": 2.073678261756116,
-      "reward_mean": 308.1216300954301,
+      "mass_mean": 400.1129038250418,
+      "mass_std": 0.08124092227961272,
+      "energy_mean": 95.9881907068332,
+      "energy_std": 1.7216878408016956,
+      "avg_c_uf_mean": 0.7175104878327073,
+      "unsafe_episode_rate": 0.0,
+      "unsafe_step_rate": 0.0,
+      "dry_run_step_rate": 0.0,
+      "low_conc_step_rate": 0.010416666666666666,
+      "midcourse_quality_step_rate": 0.0,
+      "late_concentration_step_rate": 0.0,
+      "late_target_step_rate": 0.0,
       "pass_rate": 1.0,
       "inband_rate": 1.0
     },
     "representative_rollout": {
       "seed": 91,
-      "png": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\artifacts\\seed91_overview.png",
-      "csv": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\artifacts\\seed91_overview.csv",
-      "summary_json": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\artifacts\\seed91_overview_summary.json",
-      "gif": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418\\artifacts\\seed91_playback.gif"
+      "png": "F:\\毕设\\claude-code\\archives\\cc_sac_lowenergy_repaired_20260429\\artifacts\\seed91_overview.png",
+      "csv": "F:\\毕设\\claude-code\\archives\\cc_sac_lowenergy_repaired_20260429\\artifacts\\seed91_overview.csv",
+      "summary_json": "F:\\毕设\\claude-code\\archives\\cc_sac_lowenergy_repaired_20260429\\artifacts\\seed91_overview_summary.json"
+    },
+    "previous_official_continuous_model": {
+      "name": "CC-SAC ft2 (crossbonus + multiseed)",
+      "archive": "F:\\毕设\\claude-code\\archives\\cc_sac_ft2_20260418"
+    }
+  },
+  "action_space_comparison": {
+    "name": "Single-layer CC/CD/DD action-space comparison",
+    "archive": "archives/action_space_compare_20260429",
+    "common_protocol": {
+      "seeds": [
+        91,
+        92,
+        93,
+        94,
+        95
+      ],
+      "target_mass": 400.0,
+      "soft_governors_disabled": true,
+      "low_buffer_fp_guard": true,
+      "dry_run_buffer_threshold": 0.0
+    },
+    "baselines": {
+      "CC": {
+        "algo": "sac",
+        "checkpoint": "archives/action_space_compare_20260429/checkpoints/CC/best_model.pth",
+        "eval": "archives/action_space_compare_20260429/evals/cc_eval_5seeds.json",
+        "mean_mass": 400.1129038250418,
+        "std_mass": 0.08124092227961272,
+        "mean_energy": 95.9881907068332,
+        "mean_avg_c_uf": 0.7175104878327073,
+        "unsafe_episode_rate": 0.0,
+        "dry_run_step_rate": 0.0,
+        "pass_rate": 1.0
+      },
+      "CD": {
+        "algo": "hybrid_td3",
+        "checkpoint": "archives/action_space_compare_20260429/checkpoints/CD/best_model.pth",
+        "eval": "archives/action_space_compare_20260429/evals/cd_eval_5seeds.json",
+        "mean_mass": 421.038415207595,
+        "std_mass": 3.907466276637857,
+        "mean_energy": 233.63771636892108,
+        "mean_avg_c_uf": 0.7055545730833781,
+        "unsafe_episode_rate": 0.0,
+        "dry_run_step_rate": 0.0,
+        "pass_rate": 0.4
+      },
+      "DD": {
+        "algo": "ddqn",
+        "checkpoint": "archives/action_space_compare_20260429/checkpoints/DD/best_model.pth",
+        "eval": "archives/action_space_compare_20260429/evals/dd_eval_5seeds.json",
+        "mean_mass": 411.3451639336956,
+        "std_mass": 16.615517796375286,
+        "mean_energy": 559.8346228454798,
+        "mean_avg_c_uf": 0.7019315021124921,
+        "unsafe_episode_rate": 0.0,
+        "dry_run_step_rate": 0.0,
+        "pass_rate": 0.2
+      }
     }
   }
 }
