@@ -83,6 +83,11 @@ def save_episode_plot(
     fig.suptitle('Episode Trajectory', fontsize=16)
 
     steps = np.arange(len(states_history))
+    actions_history = np.asarray(actions_history, dtype=np.float32)
+    if actions_history.ndim == 1:
+        actions_history = actions_history.reshape(-1, 1)
+    q_uf_series = actions_history[:, 0]
+    q_fp_series = actions_history[:, 1] if actions_history.shape[1] > 1 else np.zeros(len(actions_history), dtype=np.float32)
 
     # 状态
     axs[0, 0].plot(steps, states_history[:, 3], 'b-')  # M_FP
@@ -98,13 +103,13 @@ def save_episode_plot(
     axs[0, 1].grid(True)
 
     # 动作
-    axs[1, 0].plot(steps, actions_history[:, 0], 'orange')
+    axs[1, 0].plot(steps, q_uf_series, 'orange')
     axs[1, 0].set_title('Underflow Pump (Q_uf)')
     axs[1, 0].set_xlabel('Step')
     axs[1, 0].set_ylabel('Flow (m³/h)')
     axs[1, 0].grid(True)
 
-    axs[1, 1].plot(steps, actions_history[:, 1], 'red')
+    axs[1, 1].plot(steps, q_fp_series, 'red')
     axs[1, 1].set_title('Filter Press Pump (Q_fp)')
     axs[1, 1].set_xlabel('Step')
     axs[1, 1].set_ylabel('Flow (m³/h)')

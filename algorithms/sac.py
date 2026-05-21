@@ -319,15 +319,24 @@ class SACAgent:
         # Q_fp almost closed. Otherwise bias the absolute underflow toward a
         # modest but non-trivial draw.
         if self.action_low_np[0] < 0.0:
-            desired_action = np.array(
-                [
-                    self.action_low_np[0] + self.action_range_np[0] * 0.58,
-                    self.action_low_np[1] + self.action_range_np[1] * 0.26,
-                ],
-                dtype=np.float32,
-            )
+            if self.action_dim >= 2:
+                desired_action = np.array(
+                    [
+                        self.action_low_np[0] + self.action_range_np[0] * 0.58,
+                        self.action_low_np[1] + self.action_range_np[1] * 0.26,
+                    ],
+                    dtype=np.float32,
+                )
+            else:
+                desired_action = np.array(
+                    [self.action_low_np[0] + self.action_range_np[0] * 0.58],
+                    dtype=np.float32,
+                )
         else:
-            desired_action = self.action_low_np + self.action_range_np * np.array([0.30, 0.07], dtype=np.float32)
+            if self.action_dim >= 2:
+                desired_action = self.action_low_np + self.action_range_np * np.array([0.30, 0.07], dtype=np.float32)
+            else:
+                desired_action = self.action_low_np + self.action_range_np * np.array([0.30], dtype=np.float32)
         desired_norm = 2.0 * (desired_action - self.action_low_np) / np.maximum(self.action_range_np, 1e-6) - 1.0
         desired_pre_tanh = _safe_atanh(desired_norm)
 
@@ -528,8 +537,11 @@ class SACAgent:
         try:
             det_actions = torch.tanh(mean) * self.action_scale + self.action_bias
             std_reg_loss = log_std.exp().pow(2).mean()
+            bc_weight_values = [self.behavior_clone_q_uf_weight]
+            if self.action_dim >= 2:
+                bc_weight_values.append(self.behavior_clone_q_fp_weight)
             bc_weights = torch.tensor(
-                [self.behavior_clone_q_uf_weight, self.behavior_clone_q_fp_weight],
+                bc_weight_values,
                 dtype=torch.float32,
                 device=self.device,
             ).view(1, -1)

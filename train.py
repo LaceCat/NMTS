@@ -40,6 +40,13 @@ def parse_args():
     parser.add_argument("--interval", type=int, default=DEFAULT_DECISION_INTERVAL, help="Physical minutes per decision step")
     parser.add_argument("--mode", type=str, default="CC", choices=["DD", "CD", "CC"], help="Physical action mode")
     parser.add_argument(
+        "--fp_control_mode",
+        type=str,
+        default="policy",
+        choices=["policy", "rule"],
+        help="Filter-press control mode for CC: policy = RL controls Q_fp, rule = environment uses a rule-based Q_fp controller.",
+    )
+    parser.add_argument(
         "--uf_control_mode",
         type=str,
         default="absolute",
@@ -1047,6 +1054,7 @@ def _evaluate_agent_policy(args, agent, stage: dict, episodes: int, seed_base: i
         decision_interval=args.interval,
         target_mass=args.target,
         mode=args.mode,
+        fp_control_mode=args.fp_control_mode,
         uf_control_mode=args.uf_control_mode,
         uf_delta_max=args.uf_delta_max,
         q_fp_delta_max=(None if args.q_fp_delta_max < 0 else args.q_fp_delta_max),
@@ -1442,6 +1450,7 @@ def _transform_obs_for_sac(obs: np.ndarray, args) -> np.ndarray:
 def _build_replay_action(args, action: np.ndarray, info: dict) -> np.ndarray:
     arr = np.asarray(action, dtype=np.float32).reshape(-1).copy()
     mode = str(args.mode).upper()
+    fp_control_mode = str(getattr(args, "fp_control_mode", "policy")).lower()
     uf_control_mode = str(getattr(args, "uf_control_mode", "absolute")).lower()
 
     applied_q_uf = float(info.get("applied_q_uf", arr[0] if arr.size > 0 else 0.0))
@@ -1461,6 +1470,8 @@ def _build_replay_action(args, action: np.ndarray, info: dict) -> np.ndarray:
         return np.array([replay_q_uf, replay_q_fp], dtype=np.float32)
 
     replay_q_uf = applied_q_uf_delta if uf_control_mode == "delta" else applied_q_uf
+    if fp_control_mode == "rule":
+        return np.array([replay_q_uf], dtype=np.float32)
     replay_q_fp = actual_q_fp if direct_q_fp_mode else applied_q_fp
     return np.array([replay_q_uf, replay_q_fp], dtype=np.float32)
 
@@ -1498,6 +1509,7 @@ def _build_teacher_action(args, stage: dict, info: dict):
         and (low_buffer_guarded or correction_excess > stage5_correction_threshold)
     ):
         mode = str(args.mode).upper()
+        fp_control_mode = str(getattr(args, "fp_control_mode", "policy")).lower()
         uf_control_mode = str(getattr(args, "uf_control_mode", "absolute")).lower()
         applied_q_uf = float(info.get("applied_q_uf", 0.0))
         applied_q_uf_delta = float(info.get("applied_q_uf_delta", 0.0))
@@ -1514,6 +1526,8 @@ def _build_teacher_action(args, stage: dict, info: dict):
             return np.array([teacher_uf, teacher_fp], dtype=np.float32), True
 
         teacher_uf = applied_q_uf_delta if uf_control_mode == "delta" else applied_q_uf
+        if fp_control_mode == "rule":
+            return np.array([teacher_uf], dtype=np.float32), True
         return np.array([teacher_uf, actual_q_fp], dtype=np.float32), True
 
     if not bool(info.get("soft_teacher_active", False)):
@@ -1539,6 +1553,7 @@ def _build_teacher_action(args, stage: dict, info: dict):
         return None, False
 
     mode = str(args.mode).upper()
+    fp_control_mode = str(getattr(args, "fp_control_mode", "policy")).lower()
     uf_control_mode = str(getattr(args, "uf_control_mode", "absolute")).lower()
 
     teacher_q_uf = float(info.get("soft_teacher_q_uf", 0.0))
@@ -1562,6 +1577,8 @@ def _build_teacher_action(args, stage: dict, info: dict):
     teacher_uf = teacher_q_uf - prev_q_uf if uf_control_mode == "delta" else teacher_q_uf
     if uf_control_mode == "delta":
         teacher_uf = float(np.clip(teacher_uf, -float(args.uf_delta_max), float(args.uf_delta_max)))
+    if fp_control_mode == "rule":
+        return np.array([teacher_uf], dtype=np.float32), True
     teacher_fp = float(np.clip(teacher_q_fp, 0.0, 70.0))
     return np.array([teacher_uf, teacher_fp], dtype=np.float32), True
 
@@ -2472,7 +2489,11 @@ def _build_agent(args, state_dim: int, action_dim: int, action_low=None, action_
             use_actor_prior=args.enable_sac_actor_prior,
             teacher_action_weight=0.0,
             teacher_action_q_uf_weight=max(float(getattr(args, "sac_stage4_teacher_action_q_uf_weight", 1.0)), 0.0),
-            teacher_action_q_fp_weight=max(float(getattr(args, "sac_stage4_teacher_action_q_fp_weight", 1.0)), 0.0),
+            teacher_action_q_fp_weight=(
+                0.0
+                if str(getattr(args, "fp_control_mode", "policy")).lower() == "rule"
+                else max(float(getattr(args, "sac_stage4_teacher_action_q_fp_weight", 1.0)), 0.0)
+            ),
             q_fp_teacher_weight=0.0,
             q_fp_teacher_residual_threshold=max(float(getattr(args, "sac_stage4_q_fp_teacher_threshold", 2.0)), 0.0),
             q_fp_teacher_decision_interval=int(args.interval),
@@ -2587,6 +2608,7 @@ def train():
         decision_interval=args.interval,
         target_mass=args.target,
         mode=args.mode,
+        fp_control_mode=args.fp_control_mode,
         uf_control_mode=args.uf_control_mode,
         uf_delta_max=args.uf_delta_max,
         q_fp_delta_max=(None if args.q_fp_delta_max < 0 else args.q_fp_delta_max),
@@ -2631,6 +2653,8 @@ def train():
     logger.info(f"Decision steps: {args.steps}")
     logger.info(f"Decision interval: {args.interval} min")
     logger.info(f"Action mode: {args.mode}")
+    if str(args.mode).upper() == "CC":
+        logger.info(f"Filter-press control mode: {args.fp_control_mode}")
     logger.info(
         f"Post-target FP governor: {'off' if args.disable_post_target_fp_governor else 'on'}"
     )

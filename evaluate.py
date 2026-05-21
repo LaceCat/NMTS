@@ -63,6 +63,13 @@ def parse_args():
     parser.add_argument("--steps", type=int, default=DEFAULT_CONTROL_STEPS, help="Decision steps per episode")
     parser.add_argument("--mode", type=str, default="CC", choices=["DD", "CD", "CC"], help="Physical action mode")
     parser.add_argument(
+        "--fp_control_mode",
+        type=str,
+        default="policy",
+        choices=["policy", "rule"],
+        help="Filter-press control mode for CC evaluation.",
+    )
+    parser.add_argument(
         "--uf_control_mode",
         type=str,
         default="absolute",
@@ -223,7 +230,13 @@ def evaluate_single(agent, env, seed=0, verbose=False, save_plot=False, adapt_fn
         done = terminated or truncated
 
         states_history.append(state.copy())
-        actions_history.append(action.copy())
+        action_arr = np.asarray(action, dtype=np.float32).reshape(-1)
+        if action_arr.size == 1:
+            actions_history.append(
+                np.array([float(action_arr[0]), float(info.get("commanded_q_fp", 0.0))], dtype=np.float32)
+            )
+        else:
+            actions_history.append(action.copy())
         rewards_history.append(reward)
         energy_history.append(info.get("total_energy_cost", 0.0))
         info_list.append(info)
@@ -453,6 +466,7 @@ def main():
         decision_interval=args.interval,
         target_mass=args.target,
         mode=args.mode,
+        fp_control_mode=args.fp_control_mode,
         uf_control_mode=args.uf_control_mode,
         uf_delta_max=args.uf_delta_max,
         q_fp_delta_max=(None if args.q_fp_delta_max < 0 else args.q_fp_delta_max),

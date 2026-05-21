@@ -50,6 +50,7 @@ class ThickenerDewateringEnv(gym.Env):
         decision_interval: int = 5,
         target_mass: float = 400.0,
         mode: str = "CC",
+        fp_control_mode: str = "policy",
         uf_control_mode: str = "absolute",
         uf_delta_max: float = 5.0,
         q_fp_delta_max: Optional[float] = None,
@@ -192,6 +193,9 @@ class ThickenerDewateringEnv(gym.Env):
         self.mode = str(mode).upper()
         if self.mode not in self.VALID_ACTION_MODES:
             raise ValueError(f"Unsupported action mode: {mode}. Expected one of {self.VALID_ACTION_MODES}.")
+        self.fp_control_mode = str(fp_control_mode).lower()
+        if self.fp_control_mode not in ("policy", "rule"):
+            raise ValueError("fp_control_mode must be 'policy' or 'rule'.")
         self.uf_control_mode = str(uf_control_mode).lower()
         if self.uf_control_mode not in ("absolute", "delta"):
             raise ValueError("uf_control_mode must be 'absolute' or 'delta'.")
@@ -211,15 +215,22 @@ class ThickenerDewateringEnv(gym.Env):
 
         self.feed_volatility = feed_volatility
 
-        action_low = np.array([0.0, 0.0], dtype=np.float32)
-        action_high = np.array([50.0, 70.0], dtype=np.float32)
-        if self.mode != "DD" and self.uf_control_mode == "delta":
-            action_low[0] = -self.uf_delta_max
-            action_high[0] = self.uf_delta_max
+        if self.mode == "CC" and self.fp_control_mode == "rule":
+            action_low = np.array([0.0], dtype=np.float32)
+            action_high = np.array([50.0], dtype=np.float32)
+            if self.uf_control_mode == "delta":
+                action_low[0] = -self.uf_delta_max
+                action_high[0] = self.uf_delta_max
+        else:
+            action_low = np.array([0.0, 0.0], dtype=np.float32)
+            action_high = np.array([50.0, 70.0], dtype=np.float32)
+            if self.mode != "DD" and self.uf_control_mode == "delta":
+                action_low[0] = -self.uf_delta_max
+                action_high[0] = self.uf_delta_max
         self.action_space = spaces.Box(
             low=action_low,
             high=action_high,
-            shape=(2,),
+            shape=action_low.shape,
             dtype=np.float32,
         )
         self.physical_action_space = self._build_physical_action_space()
@@ -301,12 +312,37 @@ class ThickenerDewateringEnv(gym.Env):
                     spaces.Discrete(2),
                 )
             )
+        if self.mode == "CC" and self.fp_control_mode == "rule":
+            low = np.array([0.0], dtype=np.float32)
+            high = np.array([50.0], dtype=np.float32)
+            if self.uf_control_mode == "delta":
+                low[0] = -self.uf_delta_max
+                high[0] = self.uf_delta_max
+            return spaces.Box(
+                low=low,
+                high=high,
+                shape=(1,),
+                dtype=np.float32,
+            )
         return spaces.Box(
             low=np.array([0.0, 0.0], dtype=np.float32),
             high=np.array([50.0, 70.0], dtype=np.float32),
             shape=(2,),
             dtype=np.float32,
         )
+
+    def _compute_rule_based_q_fp(self, q_uf: float) -> float:
+        q_uf = float(np.clip(q_uf, 0.0, 50.0))
+        v_buf = float(max(self.v_buf, 0.0))
+        if self.enable_fp_batching and self.fp_busy:
+            return 0.0
+
+        # No active batch restriction: try to drain both the fresh underflow
+        # and the currently available buffer inventory within one decision
+        # interval, then apply the existing physical / actuator caps.
+        inventory_equivalent_flow = 60.0 * v_buf / max(float(self.decision_interval), 1.0)
+        target_q_fp = q_uf + inventory_equivalent_flow
+        return float(np.clip(target_q_fp, 0.0, 70.0))
 
     @staticmethod
     def _discrete_on_off(value: float, on_value: float) -> float:
@@ -316,7 +352,10 @@ class ThickenerDewateringEnv(gym.Env):
 
     def _resolve_physical_action(self, action: np.ndarray) -> np.ndarray:
         arr = np.asarray(action, dtype=np.float32).reshape(-1)
-        if arr.size != 2:
+        if self.mode == "CC" and self.fp_control_mode == "rule":
+            if arr.size != 1:
+                raise ValueError(f"Expected 1 action value for CC rule-fp mode, got shape {np.asarray(action).shape}")
+        elif arr.size != 2:
             raise ValueError(f"Expected 2 action values, got shape {np.asarray(action).shape}")
 
         if self.mode == "DD":
@@ -343,7 +382,10 @@ class ThickenerDewateringEnv(gym.Env):
                 q_uf = float(np.clip(arr[0], 0.0, 50.0))
                 if q_uf < self.q_uf_deadzone:
                     q_uf = 0.0
-            q_fp = float(np.clip(arr[1], 0.0, 70.0))
+            if self.fp_control_mode == "rule":
+                q_fp = self._compute_rule_based_q_fp(q_uf)
+            else:
+                q_fp = float(np.clip(arr[1], 0.0, 70.0))
             if (not self._direct_q_fp_physical_only_enabled()) and self.q_fp_delta_max is not None:
                 q_fp = float(
                     np.clip(
@@ -996,6 +1038,7 @@ class ThickenerDewateringEnv(gym.Env):
             "start_t": float(self.timecnt),
             "current_price": float(self.pricing.get_price(self.timecnt)),
             "policy_step_start": int(self.policy_stepcnt),
+            "fp_control_mode": self.fp_control_mode,
         }
         return obs, info
 
@@ -1005,8 +1048,23 @@ class ThickenerDewateringEnv(gym.Env):
         self._push_state_history(current_base_obs)
 
         prev_q_uf_cmd = float(self.Q_uf)
-        self.last_raw_action = np.asarray(action, dtype=np.float32).reshape(-1).copy()
-        physical_action = self._resolve_physical_action(self.last_raw_action)
+        raw_action = np.asarray(action, dtype=np.float32).reshape(-1).copy()
+        log_raw_action = raw_action.copy()
+        if self.mode == "CC" and self.fp_control_mode == "rule" and raw_action.size == 1:
+            if self.uf_control_mode == "delta":
+                requested_delta = float(np.clip(raw_action[0], -self.uf_delta_max, self.uf_delta_max))
+                if abs(requested_delta) < self.uf_delta_deadzone:
+                    requested_delta = 0.0
+                preview_q_uf = float(np.clip(self.Q_uf + requested_delta, 0.0, 50.0))
+            else:
+                preview_q_uf = float(np.clip(raw_action[0], 0.0, 50.0))
+                if preview_q_uf < self.q_uf_deadzone:
+                    preview_q_uf = 0.0
+            log_raw_action = np.array([raw_action[0], self._compute_rule_based_q_fp(preview_q_uf)], dtype=np.float32)
+        elif raw_action.size == 2:
+            log_raw_action = raw_action.copy()
+        self.last_raw_action = log_raw_action
+        physical_action = self._resolve_physical_action(raw_action)
         commanded_q_uf = float(physical_action[0])
         commanded_q_fp = float(physical_action[1])
         minutes_left = max(self.total_minutes - self.timecnt, 0)
@@ -1328,6 +1386,7 @@ class ThickenerDewateringEnv(gym.Env):
         info = {
             "action_mode": self.mode,
             "uf_control_mode": self.uf_control_mode,
+            "fp_control_mode": self.fp_control_mode,
             "raw_action_q_uf": float(self.last_raw_action[0]),
             "raw_action_q_fp": float(self.last_raw_action[1]),
             "commanded_q_uf": float(commanded_q_uf),
